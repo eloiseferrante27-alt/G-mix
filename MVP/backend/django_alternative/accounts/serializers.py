@@ -22,7 +22,7 @@ class RegisterSerializer(serializers.Serializer):
     password = serializers.CharField(write_only=True, min_length=8)
     first_name = serializers.CharField(default='')
     last_name = serializers.CharField(default='')
-    role = serializers.ChoiceField(choices=['admin', 'formateur', 'joueur'], default='joueur')
+    role = serializers.ChoiceField(choices=['admin', 'organisme', 'formateur', 'joueur'], default='joueur')
 
     def create(self, validated_data):
         user = User.objects.create_user(

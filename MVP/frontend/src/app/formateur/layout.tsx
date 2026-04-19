@@ -13,7 +13,7 @@ export default async function FormateurLayout({
     redirect('/login');
   }
 
-  if (session.role !== 'formateur' && session.role !== 'admin') {
+  if (session.role === 'joueur') {
     redirect('/jeu');
   }
 

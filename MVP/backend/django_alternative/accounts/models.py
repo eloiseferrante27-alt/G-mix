@@ -2,7 +2,7 @@ import uuid
 from django.db import models
 from django.contrib.auth.models import User
 
-ROLE_CHOICES = [('admin', 'Admin'), ('formateur', 'Formateur'), ('joueur', 'Joueur')]
+ROLE_CHOICES = [('admin', 'Admin'), ('organisme', 'Organisme'), ('formateur', 'Formateur'), ('joueur', 'Joueur')]
 
 
 class Profile(models.Model):

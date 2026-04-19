@@ -11,41 +11,49 @@ function isPublic(pathname: string): boolean {
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  if (isPublic(pathname)) {
-    return NextResponse.next();
-  }
+  if (isPublic(pathname)) return NextResponse.next();
 
-  const sessionCookie = request.cookies.get(SESSION_COOKIE);
+  const cookie = request.cookies.get(SESSION_COOKIE);
+  if (!cookie) return NextResponse.redirect(new URL('/login', request.url));
 
-  if (!sessionCookie) {
-    const loginUrl = new URL('/login', request.url);
-    loginUrl.searchParams.set('from', pathname);
-    return NextResponse.redirect(loginUrl);
-  }
-
+  let role: string;
   try {
-    const payload = JSON.parse(sessionCookie.value);
+    const payload = JSON.parse(cookie.value);
     if (new Date(payload.expiresAt) < new Date()) {
-      const loginUrl = new URL('/login', request.url);
-      return NextResponse.redirect(loginUrl);
+      return NextResponse.redirect(new URL('/login', request.url));
     }
-
-    const role: string = payload.role;
-
-    if (pathname.startsWith('/admin') && role !== 'admin') {
-      return NextResponse.redirect(new URL(role === 'formateur' ? '/formateur' : '/jeu', request.url));
-    }
-    if (pathname.startsWith('/formateur') && role === 'joueur') {
-      return NextResponse.redirect(new URL('/jeu', request.url));
-    }
-    if (pathname.startsWith('/jeu') && role !== 'joueur') {
-      return NextResponse.redirect(new URL(role === 'admin' ? '/admin' : '/formateur', request.url));
-    }
+    role = payload.role;
   } catch {
     return NextResponse.redirect(new URL('/login', request.url));
   }
 
+  // Admin : accès total
+  if (role === 'admin') return NextResponse.next();
+
+  // Routes protégées par rôle
+  if (pathname.startsWith('/admin')) {
+    return NextResponse.redirect(new URL(_home(role), request.url));
+  }
+
+  if (pathname.startsWith('/organisme') && role !== 'organisme') {
+    return NextResponse.redirect(new URL(_home(role), request.url));
+  }
+
+  if (pathname.startsWith('/formateur') && role === 'joueur') {
+    return NextResponse.redirect(new URL('/jeu', request.url));
+  }
+
+  if (pathname.startsWith('/jeu') && role !== 'joueur') {
+    return NextResponse.redirect(new URL(_home(role), request.url));
+  }
+
   return NextResponse.next();
+}
+
+function _home(role: string): string {
+  if (role === 'organisme') return '/organisme';
+  if (role === 'formateur') return '/formateur';
+  return '/jeu';
 }
 
 export const config = {

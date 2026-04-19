@@ -1,4 +1,4 @@
-export type Role = 'admin' | 'formateur' | 'joueur';
+export type Role = 'admin' | 'organisme' | 'formateur' | 'joueur';
 export type SessionStatus = 'draft' | 'active' | 'completed' | 'archived';
 export type TurnStatus = 'pending' | 'open' | 'closed';
 
@@ -6,6 +6,12 @@ export interface Organization {
   id: string;
   name: string;
   plan: 'free' | 'pro' | 'enterprise';
+  contact_email?: string;
+  owner_id?: string;
+  max_formateurs?: number;
+  max_scenarios?: number;
+  max_sessions?: number;
+  ai_generation_enabled?: boolean;
   created_at: string;
 }
 

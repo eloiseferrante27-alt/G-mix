@@ -24,7 +24,7 @@ CREATE TABLE profiles (
     email TEXT NOT NULL,
     first_name TEXT NOT NULL DEFAULT '',
     last_name TEXT NOT NULL DEFAULT '',
-    role VARCHAR(20) NOT NULL DEFAULT 'joueur' CHECK (role IN ('admin', 'formateur', 'joueur')),
+    role VARCHAR(20) NOT NULL DEFAULT 'joueur' CHECK (role IN ('admin', 'organisme', 'formateur', 'joueur')),
     organization_id UUID REFERENCES organizations(id) ON DELETE SET NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -150,7 +150,7 @@ BEGIN
     NEW.email,
     COALESCE(NEW.raw_user_meta_data->>'first_name', ''),
     COALESCE(NEW.raw_user_meta_data->>'last_name', ''),
-    COALESCE(NEW.raw_user_meta_data->>'role', 'joueur')
+    COALESCE(NULLIF(NEW.raw_user_meta_data->>'role', ''), 'joueur')
   )
   ON CONFLICT (id) DO NOTHING;
   RETURN NEW;

@@ -4,11 +4,24 @@ import { GmixLogo } from '@/components/ui/gmix-logo';
 import { logout } from '@/app/actions/auth';
 
 interface SidebarProps {
-  role: 'admin' | 'formateur' | 'joueur';
+  role: 'admin' | 'organisme' | 'formateur' | 'joueur';
   firstName: string;
   lastName: string;
   email: string;
 }
+
+const adminLinks = [
+  { href: '/admin', label: 'Tableau de bord', icon: '📊' },
+  { href: '/admin/organizations', label: 'Organisations', icon: '🏢' },
+  { href: '/admin/users', label: 'Utilisateurs', icon: '👤' },
+];
+
+const organismeLinks = [
+  { href: '/organisme', label: 'Tableau de bord', icon: '📊' },
+  { href: '/organisme/membres', label: 'Membres', icon: '👥' },
+  { href: '/organisme/invitations', label: 'Invitations', icon: '✉️' },
+  { href: '/formateur', label: 'Sessions & Scénarios', icon: '🎮' },
+];
 
 const formateurLinks = [
   { href: '/formateur', label: 'Tableau de bord', icon: '📊' },
@@ -17,19 +30,33 @@ const formateurLinks = [
   { href: '/formateur/teams', label: 'Équipes', icon: '👥' },
 ];
 
-const adminLinks = [
-  { href: '/admin', label: 'Tableau de bord', icon: '📊' },
-  { href: '/admin/organizations', label: 'Organisations', icon: '🏢' },
-  { href: '/admin/users', label: 'Utilisateurs', icon: '👤' },
-  { href: '/formateur', label: 'Espace formateur', icon: '📝' },
-];
-
 const joueurLinks = [
   { href: '/jeu', label: 'Mes sessions', icon: '🎮' },
 ];
 
+const linksByRole = {
+  admin: adminLinks,
+  organisme: organismeLinks,
+  formateur: formateurLinks,
+  joueur: joueurLinks,
+};
+
+const roleLabel = {
+  admin: 'Administrateur',
+  organisme: 'Organisme',
+  formateur: 'Formateur',
+  joueur: 'Joueur',
+};
+
+const roleBadgeColor = {
+  admin: 'bg-red-100 text-red-700',
+  organisme: 'bg-blue-100 text-blue-700',
+  formateur: 'bg-purple-100 text-purple-700',
+  joueur: 'bg-green-100 text-green-700',
+};
+
 export const Sidebar: React.FC<SidebarProps> = ({ role, firstName, lastName, email }) => {
-  const links = role === 'admin' ? adminLinks : role === 'joueur' ? joueurLinks : formateurLinks;
+  const links = linksByRole[role] ?? joueurLinks;
 
   return (
     <aside className="w-64 bg-white border-r border-slate-200 min-h-screen flex flex-col">
@@ -57,8 +84,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ role, firstName, lastName, ema
       </nav>
 
       <div className="p-4 border-t border-slate-200">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center">
+        <div className="flex items-center gap-3 mb-3">
+          <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center flex-shrink-0">
             <span className="text-purple-700 font-medium text-sm">
               {firstName.charAt(0)}{lastName.charAt(0)}
             </span>
@@ -68,10 +95,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ role, firstName, lastName, ema
             <p className="text-xs text-slate-500 truncate">{email}</p>
           </div>
         </div>
+        <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium mb-3 ${roleBadgeColor[role]}`}>
+          {roleLabel[role]}
+        </span>
         <form action={logout}>
           <button
             type="submit"
-            className="mt-3 w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg transition-colors text-left"
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg transition-colors text-left"
           >
             <span>🚪</span>
             <span>Se déconnecter</span>

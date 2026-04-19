@@ -17,7 +17,9 @@ const RegisterSchema = z.object({
   password: z.string().min(8, { message: 'Minimum 8 caractères' }),
   first_name: z.string().min(1, { message: 'Prénom requis' }),
   last_name: z.string().min(1, { message: 'Nom requis' }),
-  role: z.enum(['formateur', 'joueur']),
+  role: z.enum(['organisme', 'formateur', 'joueur']),
+  org_name: z.string().optional(),
+  org_code: z.string().optional(),
 })
 
 export type AuthState = {
@@ -54,8 +56,7 @@ export async function login(state: AuthState, formData: FormData): Promise<AuthS
       lastName: user.last_name ?? '',
       djangoToken: access,
     })
-    const dest = user.role === 'admin' ? '/admin' : user.role === 'formateur' ? '/formateur' : '/jeu'
-    redirect(dest)
+    redirect(_dest(user.role))
   }
 
   // ── Supabase backend (default) ──────────────────────────────────────────────
@@ -73,7 +74,6 @@ export async function login(state: AuthState, formData: FormData): Promise<AuthS
     }
   }
 
-  // profiles.id = auth.users.id (standard pattern)
   const service = createServiceClient()
   const { data: profile } = await service
     .from('profiles')
@@ -94,8 +94,7 @@ export async function login(state: AuthState, formData: FormData): Promise<AuthS
     lastName: profile.last_name ?? '',
   })
 
-  const dest = profile.role === 'admin' ? '/admin' : profile.role === 'formateur' ? '/formateur' : '/jeu'
-  redirect(dest)
+  redirect(_dest(profile.role))
 }
 
 export async function register(state: AuthState, formData: FormData): Promise<AuthState> {
@@ -105,17 +104,24 @@ export async function register(state: AuthState, formData: FormData): Promise<Au
     first_name: formData.get('first_name'),
     last_name: formData.get('last_name'),
     role: formData.get('role'),
+    org_name: formData.get('org_name') || undefined,
+    org_code: formData.get('org_code') || undefined,
   })
 
   if (!result.success) {
     return { errors: result.error.flatten().fieldErrors }
   }
 
-  const { first_name, last_name, email, password, role } = result.data
+  const { first_name, last_name, email, password, role, org_name, org_code } = result.data
+
+  // Validation spécifique par rôle
+  if (role === 'organisme' && !org_name?.trim()) {
+    return { errors: { org_name: ['Le nom de votre organisation est requis'] } }
+  }
 
   const service = createServiceClient()
 
-  // Create auth user with user_metadata — the DB trigger will auto-create the profile
+  // Créer l'utilisateur auth
   const { data, error } = await service.auth.admin.createUser({
     email,
     password,
@@ -137,26 +143,81 @@ export async function register(state: AuthState, formData: FormData): Promise<Au
     return { message: 'Erreur lors de la création du compte' }
   }
 
-  // Ensure profile exists (in case the trigger didn't fire yet)
+  const userId = data.user.id
+  let organizationId = ''
+
+  // ── Organisme : crée son organisation ──────────────────────────────────────
+  if (role === 'organisme') {
+    const { data: org, error: orgError } = await service
+      .from('organizations')
+      .insert({
+        name: org_name!.trim(),
+        contact_email: email,
+        plan: 'free',
+        owner_id: userId,
+      })
+      .select('id')
+      .single()
+
+    if (orgError || !org) {
+      // Rollback user
+      await service.auth.admin.deleteUser(userId)
+      return { message: 'Erreur lors de la création de l\'organisation' }
+    }
+    organizationId = org.id
+  }
+
+  // ── Formateur / Joueur : rejoint via code d'invitation ──────────────────────
+  if ((role === 'formateur' || role === 'joueur') && org_code?.trim()) {
+    const { data: invite } = await service
+      .from('organization_invites')
+      .select('organization_id, accepted_at, expires_at')
+      .eq('token', org_code.trim())
+      .is('accepted_at', null)
+      .single()
+
+    if (invite) {
+      const isExpired = invite.expires_at && new Date(invite.expires_at) < new Date()
+      if (!isExpired) {
+        organizationId = invite.organization_id
+        // Marquer l'invitation comme acceptée
+        await service
+          .from('organization_invites')
+          .update({ accepted_at: new Date().toISOString() })
+          .eq('token', org_code.trim())
+      }
+    }
+    // Si code invalide, on continue sans org (l'utilisateur pourra rejoindre plus tard)
+  }
+
+  // Créer le profil
   await service.from('profiles').upsert({
-    id: data.user.id,
+    id: userId,
     email,
     first_name,
     last_name,
     role,
+    organization_id: organizationId || null,
   }, { onConflict: 'id' })
 
+  // Si organisme, mettre à jour owner_id dans l'org (maintenant que le profil existe)
+  if (role === 'organisme' && organizationId) {
+    await service
+      .from('organizations')
+      .update({ owner_id: userId })
+      .eq('id', organizationId)
+  }
+
   await createSession({
-    userId: data.user.id,
+    userId,
     email,
     role: role as Role,
-    organizationId: '',
+    organizationId,
     firstName: first_name,
     lastName: last_name,
   })
 
-  const dest = role === 'formateur' ? '/formateur' : '/jeu'
-  redirect(dest)
+  redirect(_dest(role))
 }
 
 export async function forgotPassword(_state: AuthState, formData: FormData): Promise<AuthState> {
@@ -178,4 +239,11 @@ export async function logout() {
   }
   await deleteSession()
   redirect('/login')
+}
+
+function _dest(role: string): string {
+  if (role === 'admin') return '/admin'
+  if (role === 'organisme') return '/organisme'
+  if (role === 'formateur') return '/formateur'
+  return '/jeu'
 }
