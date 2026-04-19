@@ -50,3 +50,5 @@ export async function clearSession() {
   const cookieStore = await cookies();
   cookieStore.delete(SESSION_COOKIE);
 }
+
+export const deleteSession = clearSession;

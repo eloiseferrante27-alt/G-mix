@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from sessions.serializers import TeamSerializer, TurnSerializer
+from game_sessions.serializers import TeamSerializer, TurnSerializer
 from .models import Decision, TurnResult
 
 

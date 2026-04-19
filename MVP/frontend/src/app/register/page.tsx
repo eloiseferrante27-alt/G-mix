@@ -1,34 +1,15 @@
 'use client';
 
-import { useState } from 'react';
+import { useActionState } from 'react';
 import Link from 'next/link';
 import { GmixLogo } from '@/components/ui/gmix-logo';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { register } from '@/app/actions/auth';
+import { Select, SelectItem } from '@/components/ui/select';
 
 export default function RegisterPage() {
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
-
-    const formData = new FormData(e.currentTarget);
-    const password = formData.get('password') as string;
-    const confirmPassword = formData.get('confirm_password') as string;
-
-    if (password !== confirmPassword) {
-      setError('Les mots de passe ne correspondent pas');
-      setLoading(false);
-      return;
-    }
-
-    // TODO: Implement registration logic
-    // For now, just redirect to login
-    window.location.href = '/login';
-  };
+  const [state, action, pending] = useActionState(register, {});
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-50 to-white p-4">
@@ -40,11 +21,12 @@ export default function RegisterPage() {
           <h1 className="text-2xl font-bold text-slate-900">G-MIX</h1>
           <p className="text-slate-600 mt-2">Créez votre compte</p>
         </div>
+
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {error && (
+          <form action={action} className="space-y-4">
+            {state.message && (
               <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-700">
-                {error}
+                {state.message}
               </div>
             )}
 
@@ -54,6 +36,7 @@ export default function RegisterPage() {
               type="email"
               label="Adresse email"
               placeholder="vous@exemple.com"
+              error={state.errors?.email?.[0]}
               required
             />
 
@@ -64,6 +47,7 @@ export default function RegisterPage() {
                 type="text"
                 label="Prénom"
                 placeholder="Jean"
+                error={state.errors?.first_name?.[0]}
                 required
               />
               <Input
@@ -72,6 +56,7 @@ export default function RegisterPage() {
                 type="text"
                 label="Nom"
                 placeholder="Dupont"
+                error={state.errors?.last_name?.[0]}
                 required
               />
             </div>
@@ -82,19 +67,24 @@ export default function RegisterPage() {
               type="password"
               label="Mot de passe"
               placeholder="••••••••"
+              error={state.errors?.password?.[0]}
               required
             />
 
-            <Input
-              id="confirm_password"
-              name="confirm_password"
-              type="password"
-              label="Confirmer le mot de passe"
-              placeholder="••••••••"
-              required
-            />
+            <div>
+              <label htmlFor="role" className="block text-sm font-medium text-slate-700 mb-1.5">
+                Rôle
+              </label>
+              <Select id="role" name="role" required defaultValue="joueur">
+                <SelectItem value="joueur">Joueur</SelectItem>
+                <SelectItem value="formateur">Formateur</SelectItem>
+              </Select>
+              {state.errors?.role && (
+                <p className="mt-1 text-sm text-red-600">{state.errors.role[0]}</p>
+              )}
+            </div>
 
-            <Button type="submit" className="w-full" loading={loading}>
+            <Button type="submit" className="w-full" loading={pending}>
               Créer mon compte
             </Button>
 

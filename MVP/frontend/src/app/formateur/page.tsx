@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { getSession } from '@/lib/session';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -18,6 +19,12 @@ const statusLabel: Record<string, string> = {
 
 export default async function FormateurDashboard() {
   const session = await getSession();
+  
+  // Redirect to login if not authenticated
+  if (!session) {
+    redirect('/login');
+  }
+
   const supabase = await createClient();
 
   const [{ data: sessions }, { data: profile }] = await Promise.all([

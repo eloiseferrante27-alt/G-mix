@@ -1,7 +1,6 @@
 -- G-MIX Supabase Schema
--- This schema mirrors the Django models for consistency
+-- Standard pattern: profiles.id = auth.users.id
 
--- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- ─── Organizations ────────────────────────────────────────────────────────────
@@ -19,13 +18,15 @@ CREATE TABLE organizations (
 );
 
 -- ─── Profiles ─────────────────────────────────────────────────────────────────
+-- profiles.id = auth.users.id (standard Supabase pattern)
 CREATE TABLE profiles (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    email TEXT NOT NULL,
+    first_name TEXT NOT NULL DEFAULT '',
+    last_name TEXT NOT NULL DEFAULT '',
     role VARCHAR(20) NOT NULL DEFAULT 'joueur' CHECK (role IN ('admin', 'formateur', 'joueur')),
     organization_id UUID REFERENCES organizations(id) ON DELETE SET NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    UNIQUE(user_id)
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 -- ─── Scenarios ────────────────────────────────────────────────────────────────
@@ -47,6 +48,7 @@ CREATE TABLE game_sessions (
     formateur_id UUID REFERENCES profiles(id) ON DELETE RESTRICT,
     organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE,
     name VARCHAR(255) NOT NULL,
+    description TEXT DEFAULT '',
     status VARCHAR(20) NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'active', 'completed', 'archived')),
     current_turn INTEGER DEFAULT 0,
     total_turns INTEGER DEFAULT 6,
@@ -110,7 +112,6 @@ CREATE TABLE turn_results (
 
 -- ─── Indexes ──────────────────────────────────────────────────────────────────
 CREATE INDEX idx_profiles_organization ON profiles(organization_id);
-CREATE INDEX idx_profiles_user ON profiles(user_id);
 CREATE INDEX idx_scenarios_organization ON scenarios(organization_id);
 CREATE INDEX idx_scenarios_created_by ON scenarios(created_by);
 CREATE INDEX idx_game_sessions_scenario ON game_sessions(scenario_id);
@@ -137,4 +138,25 @@ ALTER TABLE turns ENABLE ROW LEVEL SECURITY;
 ALTER TABLE decisions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE turn_results ENABLE ROW LEVEL SECURITY;
 
--- Policies will be created in policies.sql
+-- Policies in policies.sql
+
+-- ─── Auto-create profile on signup (trigger) ──────────────────────────────────
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  INSERT INTO public.profiles (id, email, first_name, last_name, role)
+  VALUES (
+    NEW.id,
+    NEW.email,
+    COALESCE(NEW.raw_user_meta_data->>'first_name', ''),
+    COALESCE(NEW.raw_user_meta_data->>'last_name', ''),
+    COALESCE(NEW.raw_user_meta_data->>'role', 'joueur')
+  )
+  ON CONFLICT (id) DO NOTHING;
+  RETURN NEW;
+END;
+$$;
+
+CREATE OR REPLACE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user();

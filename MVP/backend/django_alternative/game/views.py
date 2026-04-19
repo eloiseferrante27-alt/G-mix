@@ -4,7 +4,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 
 from gmix.permissions import IsAdminOrFormateur
-from sessions.models import GameSession, Turn
+from game_sessions.models import GameSession, Turn
 from .models import Decision, TurnResult
 from .serializers import DecisionSerializer, TurnResultSerializer
 from .engine import calculate_round
@@ -24,7 +24,7 @@ class SubmitDecisionView(APIView):
         except Turn.DoesNotExist:
             return Response({'error': "Ce tour n'est pas ouvert"}, status=400)
 
-        from sessions.models import Team, TeamMember
+        from game_sessions.models import Team, TeamMember
         try:
             team = Team.objects.get(pk=team_id)
         except Team.DoesNotExist:
@@ -88,7 +88,7 @@ class CalculateResultsView(APIView):
         # Persist results
         saved = []
         for r in results:
-            from sessions.models import Team
+            from game_sessions.models import Team
             team = Team.objects.get(pk=r['team_id'])
             obj, _ = TurnResult.objects.update_or_create(
                 turn=turn, team=team,

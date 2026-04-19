@@ -26,7 +26,7 @@ INSTALLED_APPS = [
     'accounts',
     'organizations',
     'scenarios',
-    'sessions',
+    'game_sessions',
     'game',
     'ai_generation',
 ]

@@ -52,7 +52,7 @@ export default async function JoueurDashboard() {
                   Tour {s.current_turn} / {s.total_turns}
                 </div>
                 <Link
-                  href={`/jeu/sessions/${s.id}`}
+                  href={`/jeu/${s.id}`}
                   className="px-4 py-2 bg-purple-700 text-white rounded-lg text-sm font-medium hover:bg-purple-800 transition-colors"
                 >
                   Jouer →

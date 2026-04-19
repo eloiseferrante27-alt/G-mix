@@ -2,8 +2,7 @@
 
 import { redirect } from 'next/navigation'
 import { z } from 'zod'
-import { createClient } from '@/lib/supabase/server'
-import { createServiceClient } from '@/lib/supabase/server'
+import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { createSession, deleteSession } from '@/lib/session'
 import { isDjango, djangoFetch } from '@/lib/backend'
 import type { Role } from '@/types'
@@ -67,12 +66,14 @@ export async function login(state: AuthState, formData: FormData): Promise<AuthS
   })
 
   if (error || !data.user) {
-    return { message: error?.message === 'Email not confirmed'
-      ? 'Email non confirmé — contactez votre administrateur'
-      : 'Email ou mot de passe incorrect' }
+    return {
+      message: error?.message === 'Email not confirmed'
+        ? 'Email non confirmé — contactez votre administrateur'
+        : 'Email ou mot de passe incorrect',
+    }
   }
 
-  // Use service client to bypass RLS — session cookie not yet committed in server action
+  // profiles.id = auth.users.id (standard pattern)
   const service = createServiceClient()
   const { data: profile } = await service
     .from('profiles')
@@ -86,7 +87,7 @@ export async function login(state: AuthState, formData: FormData): Promise<AuthS
 
   await createSession({
     userId: data.user.id,
-    email: data.user.email!,
+    email: profile.email ?? data.user.email!,
     role: profile.role as Role,
     organizationId: profile.organization_id ?? '',
     firstName: profile.first_name ?? '',
@@ -112,8 +113,9 @@ export async function register(state: AuthState, formData: FormData): Promise<Au
 
   const { first_name, last_name, email, password, role } = result.data
 
-  // Use admin.createUser to bypass email confirmation entirely (no SMTP needed)
   const service = createServiceClient()
+
+  // Create auth user with user_metadata — the DB trigger will auto-create the profile
   const { data, error } = await service.auth.admin.createUser({
     email,
     password,
@@ -122,7 +124,10 @@ export async function register(state: AuthState, formData: FormData): Promise<Au
   })
 
   if (error) {
-    if (error.message.toLowerCase().includes('already registered') || error.message.toLowerCase().includes('already exists')) {
+    if (
+      error.message.toLowerCase().includes('already registered') ||
+      error.message.toLowerCase().includes('already exists')
+    ) {
       return { message: 'Un compte existe déjà avec cet email' }
     }
     return { message: error.message }
@@ -132,15 +137,14 @@ export async function register(state: AuthState, formData: FormData): Promise<Au
     return { message: 'Erreur lors de la création du compte' }
   }
 
-  await service
-    .from('profiles')
-    .upsert({
-      id: data.user.id,
-      email,
-      first_name,
-      last_name,
-      role,
-    })
+  // Ensure profile exists (in case the trigger didn't fire yet)
+  await service.from('profiles').upsert({
+    id: data.user.id,
+    email,
+    first_name,
+    last_name,
+    role,
+  }, { onConflict: 'id' })
 
   await createSession({
     userId: data.user.id,
@@ -164,7 +168,6 @@ export async function forgotPassword(_state: AuthState, formData: FormData): Pro
     redirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/reset-password`,
   })
 
-  // Always succeed — don't leak whether the email exists
   return { message: 'sent' }
 }
 
