@@ -39,19 +39,28 @@ echo ""
 echo -e "  Backend : ${BOLD}$BACKEND${RESET}"
 echo ""
 
-# ── Kill previous processes on target ports ───────────────────────────────────
+# ── Kill ALL previous instances ───────────────────────────────────────────────
 kill_port() {
   local port="$1"
-  local pid
-  pid=$(netstat -ano 2>/dev/null | grep ":$port " | grep LISTENING | awk '{print $NF}' | head -1)
-  if [[ -n "$pid" ]]; then
+  local pids
+  pids=$(netstat -ano 2>/dev/null | grep ":$port " | grep LISTENING | awk '{print $NF}' | sort -u)
+  for pid in $pids; do
+    [[ -z "$pid" || "$pid" == "0" ]] && continue
     taskkill //PID "$pid" //F &>/dev/null && warn "Port $port libéré (PID $pid)"
-  fi
+  done
 }
 
-log "Libération des ports..."
+log "Arrêt des instances précédentes..."
+# Kill by port
 kill_port 3000
+kill_port 3001
 kill_port 8000
+# Kill all node/python processes (covers any stray Next.js / Django)
+taskkill //IM node.exe //F &>/dev/null && warn "node.exe arrêté" || true
+taskkill //IM python.exe //F &>/dev/null && warn "python.exe arrêté" || true
+# Clean up old PID files
+rm -f /tmp/gmix_next.pid /tmp/gmix_django.pid
+sleep 1
 
 # ── .env.local setup ─────────────────────────────────────────────────────────
 ENV_FILE="$FRONTEND_DIR/.env.local"

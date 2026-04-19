@@ -1,0 +1,13 @@
+# Claude Code / AI tooling
+.claude/
+.agents/
+skills-lock.json
+.mcp.json
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Logs
+*.log

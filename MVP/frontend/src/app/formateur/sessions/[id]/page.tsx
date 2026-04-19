@@ -6,19 +6,20 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 
-export default async function SessionDetailPage({ params }: { params: { id: string } }) {
+export default async function SessionDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await getSession();
 
   if (!session) {
     redirect('/login');
   }
 
+  const { id: sessionId } = await params;
+
   const supabase = await createClient();
   const { data: gameSession } = await supabase
     .from('game_sessions')
     .select('*, scenarios(name), teams(id, name, color, members:team_members(user_id))')
-    .eq('id', params.id)
-    .eq('formateur_id', session.userId)
+    .eq('id', sessionId)
     .single();
 
   if (!gameSession) {
@@ -34,18 +35,20 @@ export default async function SessionDetailPage({ params }: { params: { id: stri
     await supabase
       .from('game_sessions')
       .update({ status: 'active', current_turn: 1, started_at: new Date().toISOString() })
-      .eq('id', params.id);
-    redirect(`/formateur/sessions/${params.id}`);
+      .eq('id', sessionId);
+    redirect(`/formateur/sessions/${sessionId}`);
   }
 
   async function handleNextTurn() {
     'use server';
     const supabase = await createClient();
+    const { data: gs } = await supabase
+      .from('game_sessions').select('current_turn').eq('id', sessionId).single();
     await supabase
       .from('game_sessions')
-      .update({ current_turn: (gameSession.current_turn ?? 0) + 1 })
-      .eq('id', params.id);
-    redirect(`/formateur/sessions/${params.id}`);
+      .update({ current_turn: (gs?.current_turn ?? 0) + 1 })
+      .eq('id', sessionId);
+    redirect(`/formateur/sessions/${sessionId}`);
   }
 
   async function handleEndGame() {
@@ -54,8 +57,8 @@ export default async function SessionDetailPage({ params }: { params: { id: stri
     await supabase
       .from('game_sessions')
       .update({ status: 'completed', ended_at: new Date().toISOString() })
-      .eq('id', params.id);
-    redirect(`/formateur/sessions/${params.id}`);
+      .eq('id', sessionId);
+    redirect(`/formateur/sessions/${sessionId}`);
   }
 
   const statusBadge = (s: string): 'default' | 'success' | 'warning' | 'info' => {

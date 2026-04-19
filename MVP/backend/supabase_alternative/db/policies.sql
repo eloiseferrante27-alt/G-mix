@@ -1,646 +1,182 @@
--- G-MIX Supabase RLS Policies
--- References follow Supabase RLS guidance:
--- https://supabase.com/docs/guides/database/postgres/row-level-security
+-- G-MIX RLS Policies — source of truth, matches production
+-- profiles.id = auth.users.id → use auth.uid() directly
+-- Roles: admin (platform) | organisme (org owner) | formateur | joueur
 
-DROP POLICY IF EXISTS org_read_member ON organizations;
-DROP POLICY IF EXISTS org_insert_owner ON organizations;
-DROP POLICY IF EXISTS org_manage_own ON organizations;
+-- ── Organizations ─────────────────────────────────────────────────────────────
+CREATE POLICY org_select ON organizations FOR SELECT USING (
+  EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+  OR id IN (SELECT organization_id FROM profiles WHERE id = auth.uid())
+);
+CREATE POLICY org_insert ON organizations FOR INSERT WITH CHECK (
+  EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+);
+CREATE POLICY org_update ON organizations FOR UPDATE USING (
+  owner_id = auth.uid()
+  OR EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+);
+CREATE POLICY org_delete ON organizations FOR DELETE USING (
+  EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+);
 
-DROP POLICY IF EXISTS profile_read_own ON profiles;
-DROP POLICY IF EXISTS profile_read_org ON profiles;
-DROP POLICY IF EXISTS profile_update_own_safe ON profiles;
-DROP POLICY IF EXISTS profile_manage_org ON profiles;
+-- ── Profiles ──────────────────────────────────────────────────────────────────
+CREATE POLICY profile_select ON profiles FOR SELECT USING (
+  id = auth.uid()
+  OR EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+  OR (organization_id IS NOT NULL
+      AND organization_id = (SELECT organization_id FROM profiles WHERE id = auth.uid()))
+);
+CREATE POLICY profile_update ON profiles FOR UPDATE USING (
+  id = auth.uid()
+  OR EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+);
+CREATE POLICY profile_delete ON profiles FOR DELETE USING (
+  EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+);
 
-DROP POLICY IF EXISTS scenario_read_org ON scenarios;
-DROP POLICY IF EXISTS scenario_insert_org ON scenarios;
-DROP POLICY IF EXISTS scenario_manage_org ON scenarios;
+-- ── Organization Invites ───────────────────────────────────────────────────────
+CREATE POLICY invites_select ON organization_invites FOR SELECT USING (
+  EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+  OR EXISTS (SELECT 1 FROM profiles p WHERE p.id = auth.uid() AND p.organization_id = organization_invites.organization_id AND p.role IN ('organisme','formateur'))
+);
+CREATE POLICY invites_insert ON organization_invites FOR INSERT WITH CHECK (
+  EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+  OR EXISTS (SELECT 1 FROM profiles p WHERE p.id = auth.uid() AND p.organization_id = organization_invites.organization_id AND p.role IN ('organisme','formateur'))
+);
+CREATE POLICY invites_delete ON organization_invites FOR DELETE USING (
+  EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+  OR EXISTS (SELECT 1 FROM profiles p WHERE p.id = auth.uid() AND p.organization_id = organization_invites.organization_id AND p.role IN ('organisme','formateur'))
+);
 
-DROP POLICY IF EXISTS session_read_org ON game_sessions;
-DROP POLICY IF EXISTS session_insert_org ON game_sessions;
-DROP POLICY IF EXISTS session_manage_org ON game_sessions;
+-- ── Scenarios ─────────────────────────────────────────────────────────────────
+CREATE POLICY scenario_select ON scenarios FOR SELECT USING (
+  is_template = true OR organization_id IS NULL
+  OR EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+  OR EXISTS (SELECT 1 FROM profiles p WHERE p.id = auth.uid() AND p.organization_id = scenarios.organization_id)
+);
+CREATE POLICY scenario_insert ON scenarios FOR INSERT WITH CHECK (
+  EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin','organisme','formateur'))
+);
+CREATE POLICY scenario_update ON scenarios FOR UPDATE USING (
+  created_by = auth.uid()
+  OR EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+  OR EXISTS (SELECT 1 FROM profiles p WHERE p.id = auth.uid() AND p.organization_id = scenarios.organization_id AND p.role = 'organisme')
+);
+CREATE POLICY scenario_delete ON scenarios FOR DELETE USING (
+  created_by = auth.uid()
+  OR EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+  OR EXISTS (SELECT 1 FROM profiles p WHERE p.id = auth.uid() AND p.organization_id = scenarios.organization_id AND p.role = 'organisme')
+);
 
-DROP POLICY IF EXISTS team_read_session ON teams;
-DROP POLICY IF EXISTS team_manage_session ON teams;
+-- ── Game Sessions ─────────────────────────────────────────────────────────────
+CREATE POLICY session_select ON game_sessions FOR SELECT USING (
+  EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+  OR EXISTS (SELECT 1 FROM profiles p WHERE p.id = auth.uid() AND p.organization_id = game_sessions.organization_id)
+);
+CREATE POLICY session_insert ON game_sessions FOR INSERT WITH CHECK (
+  EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+  OR EXISTS (SELECT 1 FROM profiles p WHERE p.id = auth.uid() AND p.organization_id = game_sessions.organization_id AND p.role IN ('organisme','formateur'))
+);
+CREATE POLICY session_update ON game_sessions FOR UPDATE USING (
+  formateur_id = auth.uid()
+  OR EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+  OR EXISTS (SELECT 1 FROM profiles p WHERE p.id = auth.uid() AND p.organization_id = game_sessions.organization_id AND p.role = 'organisme')
+);
+CREATE POLICY session_delete ON game_sessions FOR DELETE USING (
+  formateur_id = auth.uid()
+  OR EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+  OR EXISTS (SELECT 1 FROM profiles p WHERE p.id = auth.uid() AND p.organization_id = game_sessions.organization_id AND p.role = 'organisme')
+);
 
-DROP POLICY IF EXISTS team_member_read_session ON team_members;
-DROP POLICY IF EXISTS team_member_manage_session ON team_members;
+-- ── Teams ─────────────────────────────────────────────────────────────────────
+CREATE POLICY team_select ON teams FOR SELECT USING (
+  EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+  OR EXISTS (SELECT 1 FROM game_sessions gs JOIN profiles p ON p.organization_id = gs.organization_id WHERE gs.id = teams.session_id AND p.id = auth.uid())
+);
+CREATE POLICY team_write ON teams FOR ALL
+  USING (
+    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+    OR EXISTS (SELECT 1 FROM game_sessions gs JOIN profiles p ON p.id = auth.uid() WHERE gs.id = teams.session_id AND (gs.formateur_id = auth.uid() OR (p.organization_id = gs.organization_id AND p.role = 'organisme')))
+  )
+  WITH CHECK (
+    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+    OR EXISTS (SELECT 1 FROM game_sessions gs JOIN profiles p ON p.id = auth.uid() WHERE gs.id = teams.session_id AND (gs.formateur_id = auth.uid() OR (p.organization_id = gs.organization_id AND p.role = 'organisme')))
+  );
 
-DROP POLICY IF EXISTS turn_read_session ON turns;
-DROP POLICY IF EXISTS turn_manage_session ON turns;
+-- ── Team Members ──────────────────────────────────────────────────────────────
+CREATE POLICY team_member_select ON team_members FOR SELECT USING (
+  EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+  OR EXISTS (SELECT 1 FROM teams t JOIN game_sessions gs ON gs.id = t.session_id JOIN profiles p ON p.organization_id = gs.organization_id WHERE t.id = team_members.team_id AND p.id = auth.uid())
+);
+CREATE POLICY team_member_insert ON team_members FOR INSERT WITH CHECK (
+  EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+  OR EXISTS (SELECT 1 FROM teams t JOIN game_sessions gs ON gs.id = t.session_id JOIN profiles p ON p.id = auth.uid() WHERE t.id = team_members.team_id AND (gs.formateur_id = auth.uid() OR (p.organization_id = gs.organization_id AND p.role = 'organisme')))
+);
+CREATE POLICY team_member_delete ON team_members FOR DELETE USING (
+  EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+  OR EXISTS (SELECT 1 FROM teams t JOIN game_sessions gs ON gs.id = t.session_id JOIN profiles p ON p.id = auth.uid() WHERE t.id = team_members.team_id AND (gs.formateur_id = auth.uid() OR (p.organization_id = gs.organization_id AND p.role = 'organisme')))
+);
 
-DROP POLICY IF EXISTS decision_read_session ON decisions;
-DROP POLICY IF EXISTS decision_insert_member ON decisions;
-DROP POLICY IF EXISTS decision_update_member ON decisions;
-DROP POLICY IF EXISTS decision_delete_staff ON decisions;
+-- ── Turns ─────────────────────────────────────────────────────────────────────
+CREATE POLICY turn_select ON turns FOR SELECT USING (
+  EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+  OR EXISTS (SELECT 1 FROM game_sessions gs JOIN profiles p ON p.organization_id = gs.organization_id WHERE gs.id = turns.session_id AND p.id = auth.uid())
+);
+CREATE POLICY turn_write ON turns FOR ALL
+  USING (
+    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+    OR EXISTS (SELECT 1 FROM game_sessions gs JOIN profiles p ON p.id = auth.uid() WHERE gs.id = turns.session_id AND (gs.formateur_id = auth.uid() OR (p.organization_id = gs.organization_id AND p.role = 'organisme')))
+  )
+  WITH CHECK (
+    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+    OR EXISTS (SELECT 1 FROM game_sessions gs JOIN profiles p ON p.id = auth.uid() WHERE gs.id = turns.session_id AND (gs.formateur_id = auth.uid() OR (p.organization_id = gs.organization_id AND p.role = 'organisme')))
+  );
 
-DROP POLICY IF EXISTS result_read_session ON turn_results;
-DROP POLICY IF EXISTS result_manage_session ON turn_results;
+-- ── Decisions ─────────────────────────────────────────────────────────────────
+CREATE POLICY decision_select ON decisions FOR SELECT USING (
+  user_id = auth.uid()
+  OR EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+  OR EXISTS (SELECT 1 FROM team_members tm WHERE tm.team_id = decisions.team_id AND tm.user_id = auth.uid())
+  OR EXISTS (SELECT 1 FROM turns t JOIN game_sessions gs ON gs.id = t.session_id WHERE t.id = decisions.turn_id AND gs.formateur_id = auth.uid())
+);
+CREATE POLICY decision_insert ON decisions FOR INSERT WITH CHECK (
+  user_id = auth.uid()
+  AND EXISTS (SELECT 1 FROM team_members tm WHERE tm.team_id = decisions.team_id AND tm.user_id = auth.uid())
+);
+CREATE POLICY decision_update ON decisions FOR UPDATE USING (user_id = auth.uid());
 
-DROP POLICY IF EXISTS invites_select_org ON organization_invites;
-DROP POLICY IF EXISTS invites_insert_org ON organization_invites;
-DROP POLICY IF EXISTS invites_update_org ON organization_invites;
-DROP POLICY IF EXISTS invites_delete_org ON organization_invites;
+-- ── Turn Results (joueurs ne peuvent pas écrire les résultats) ────────────────
+CREATE POLICY turn_result_select ON turn_results FOR SELECT USING (
+  EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+  OR EXISTS (SELECT 1 FROM team_members tm WHERE tm.team_id = turn_results.team_id AND tm.user_id = auth.uid())
+  OR EXISTS (SELECT 1 FROM turns t JOIN game_sessions gs ON gs.id = t.session_id WHERE t.id = turn_results.turn_id AND gs.formateur_id = auth.uid())
+);
+CREATE POLICY turn_result_write ON turn_results FOR ALL
+  USING (
+    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+    OR EXISTS (SELECT 1 FROM turns t JOIN game_sessions gs ON gs.id = t.session_id JOIN profiles p ON p.id = auth.uid() WHERE t.id = turn_results.turn_id AND (gs.formateur_id = auth.uid() OR (p.organization_id = gs.organization_id AND p.role = 'organisme')))
+  )
+  WITH CHECK (
+    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+    OR EXISTS (SELECT 1 FROM turns t JOIN game_sessions gs ON gs.id = t.session_id JOIN profiles p ON p.id = auth.uid() WHERE t.id = turn_results.turn_id AND (gs.formateur_id = auth.uid() OR (p.organization_id = gs.organization_id AND p.role = 'organisme')))
+  );
 
--- Organizations
-CREATE POLICY org_read_member ON organizations
-    FOR SELECT TO authenticated
-    USING (
-        auth.uid() IS NOT NULL
-        AND EXISTS (
-            SELECT 1
-            FROM profiles actor
-            WHERE actor.id = auth.uid()
-              AND actor.organization_id = organizations.id
-        )
-    );
+-- ── Session Feedback ──────────────────────────────────────────────────────────
+CREATE POLICY feedback_select ON session_feedback FOR SELECT USING (
+  EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+  OR EXISTS (SELECT 1 FROM game_sessions gs JOIN profiles p ON p.organization_id = gs.organization_id WHERE gs.id = session_feedback.session_id AND p.id = auth.uid())
+);
+CREATE POLICY feedback_insert ON session_feedback FOR INSERT WITH CHECK (user_id = auth.uid());
 
-CREATE POLICY org_insert_owner ON organizations
-    FOR INSERT TO authenticated
-    WITH CHECK (
-        auth.uid() IS NOT NULL
-        AND owner_id = auth.uid()
-    );
+-- ── Learning Resources (lecture publique, écriture staff) ─────────────────────
+CREATE POLICY learning_select ON learning_resources FOR SELECT USING (true);
+CREATE POLICY learning_write ON learning_resources FOR ALL
+  USING (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin','organisme','formateur')))
+  WITH CHECK (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin','organisme','formateur')));
 
-CREATE POLICY org_manage_own ON organizations
-    FOR UPDATE TO authenticated
-    USING (
-        auth.uid() IS NOT NULL
-        AND (
-            owner_id = auth.uid()
-            OR EXISTS (
-                SELECT 1
-                FROM profiles actor
-                WHERE actor.id = auth.uid()
-                  AND actor.organization_id = organizations.id
-                  AND actor.role IN ('admin', 'organisme')
-            )
-        )
-    )
-    WITH CHECK (
-        auth.uid() IS NOT NULL
-        AND (
-            owner_id = auth.uid()
-            OR EXISTS (
-                SELECT 1
-                FROM profiles actor
-                WHERE actor.id = auth.uid()
-                  AND actor.organization_id = organizations.id
-                  AND actor.role IN ('admin', 'organisme')
-            )
-        )
-    );
+-- ── Chat Messages ─────────────────────────────────────────────────────────────
+CREATE POLICY chat_select ON chat_messages FOR SELECT USING (
+  EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+  OR EXISTS (SELECT 1 FROM game_sessions gs JOIN profiles p ON p.organization_id = gs.organization_id WHERE gs.id = chat_messages.session_id AND p.id = auth.uid())
+);
+CREATE POLICY chat_insert ON chat_messages FOR INSERT WITH CHECK (user_id = auth.uid());
 
--- Profiles
-CREATE POLICY profile_read_own ON profiles
-    FOR SELECT TO authenticated
-    USING (auth.uid() IS NOT NULL AND id = auth.uid());
-
-CREATE POLICY profile_read_org ON profiles
-    FOR SELECT TO authenticated
-    USING (
-        auth.uid() IS NOT NULL
-        AND EXISTS (
-            SELECT 1
-            FROM profiles actor
-            WHERE actor.id = auth.uid()
-              AND actor.organization_id IS NOT NULL
-              AND actor.organization_id = profiles.organization_id
-        )
-    );
-
-CREATE POLICY profile_update_own_safe ON profiles
-    FOR UPDATE TO authenticated
-    USING (auth.uid() IS NOT NULL AND id = auth.uid())
-    WITH CHECK (
-        auth.uid() IS NOT NULL
-        AND id = auth.uid()
-        AND role = (
-            SELECT current_profile.role
-            FROM profiles AS current_profile
-            WHERE current_profile.id = auth.uid()
-        )
-        AND organization_id IS NOT DISTINCT FROM (
-            SELECT current_profile.organization_id
-            FROM profiles AS current_profile
-            WHERE current_profile.id = auth.uid()
-        )
-    );
-
-CREATE POLICY profile_manage_org ON profiles
-    FOR UPDATE TO authenticated
-    USING (
-        auth.uid() IS NOT NULL
-        AND EXISTS (
-            SELECT 1
-            FROM profiles actor
-            WHERE actor.id = auth.uid()
-              AND actor.organization_id IS NOT NULL
-              AND actor.organization_id = profiles.organization_id
-              AND actor.role IN ('admin', 'organisme')
-        )
-    )
-    WITH CHECK (
-        auth.uid() IS NOT NULL
-        AND (
-            profiles.organization_id IS NULL
-            OR EXISTS (
-                SELECT 1
-                FROM profiles actor
-                WHERE actor.id = auth.uid()
-                  AND actor.organization_id = profiles.organization_id
-                  AND actor.role IN ('admin', 'organisme')
-            )
-        )
-    );
-
--- Scenarios
-CREATE POLICY scenario_read_org ON scenarios
-    FOR SELECT TO authenticated
-    USING (
-        is_template = TRUE
-        OR (
-            auth.uid() IS NOT NULL
-            AND EXISTS (
-                SELECT 1
-                FROM profiles actor
-                WHERE actor.id = auth.uid()
-                  AND actor.organization_id = scenarios.organization_id
-            )
-        )
-    );
-
-CREATE POLICY scenario_insert_org ON scenarios
-    FOR INSERT TO authenticated
-    WITH CHECK (
-        auth.uid() IS NOT NULL
-        AND created_by = auth.uid()
-        AND EXISTS (
-            SELECT 1
-            FROM profiles actor
-            WHERE actor.id = auth.uid()
-              AND actor.organization_id = scenarios.organization_id
-              AND actor.role IN ('admin', 'organisme', 'formateur')
-        )
-    );
-
-CREATE POLICY scenario_manage_org ON scenarios
-    FOR UPDATE TO authenticated
-    USING (
-        auth.uid() IS NOT NULL
-        AND (
-            created_by = auth.uid()
-            OR EXISTS (
-                SELECT 1
-                FROM profiles actor
-                WHERE actor.id = auth.uid()
-                  AND actor.organization_id = scenarios.organization_id
-                  AND actor.role IN ('admin', 'organisme')
-            )
-        )
-    )
-    WITH CHECK (
-        auth.uid() IS NOT NULL
-        AND EXISTS (
-            SELECT 1
-            FROM profiles actor
-            WHERE actor.id = auth.uid()
-              AND actor.organization_id = scenarios.organization_id
-              AND (
-                  actor.role IN ('admin', 'organisme')
-                  OR scenarios.created_by = auth.uid()
-              )
-        )
-    );
-
--- Game sessions
-CREATE POLICY session_read_org ON game_sessions
-    FOR SELECT TO authenticated
-    USING (
-        auth.uid() IS NOT NULL
-        AND EXISTS (
-            SELECT 1
-            FROM profiles actor
-            WHERE actor.id = auth.uid()
-              AND actor.organization_id = game_sessions.organization_id
-        )
-    );
-
-CREATE POLICY session_insert_org ON game_sessions
-    FOR INSERT TO authenticated
-    WITH CHECK (
-        auth.uid() IS NOT NULL
-        AND EXISTS (
-            SELECT 1
-            FROM profiles actor
-            WHERE actor.id = auth.uid()
-              AND actor.organization_id = game_sessions.organization_id
-              AND actor.role IN ('admin', 'organisme', 'formateur')
-              AND (
-                  actor.role IN ('admin', 'organisme')
-                  OR game_sessions.formateur_id IS NULL
-                  OR game_sessions.formateur_id = auth.uid()
-              )
-        )
-    );
-
-CREATE POLICY session_manage_org ON game_sessions
-    FOR UPDATE TO authenticated
-    USING (
-        auth.uid() IS NOT NULL
-        AND EXISTS (
-            SELECT 1
-            FROM profiles actor
-            WHERE actor.id = auth.uid()
-              AND actor.organization_id = game_sessions.organization_id
-              AND (
-                  actor.role IN ('admin', 'organisme')
-                  OR game_sessions.formateur_id = auth.uid()
-              )
-        )
-    )
-    WITH CHECK (
-        auth.uid() IS NOT NULL
-        AND EXISTS (
-            SELECT 1
-            FROM profiles actor
-            WHERE actor.id = auth.uid()
-              AND actor.organization_id = game_sessions.organization_id
-              AND (
-                  actor.role IN ('admin', 'organisme')
-                  OR game_sessions.formateur_id = auth.uid()
-                  OR game_sessions.formateur_id IS NULL
-              )
-        )
-    );
-
--- Teams
-CREATE POLICY team_read_session ON teams
-    FOR SELECT TO authenticated
-    USING (
-        auth.uid() IS NOT NULL
-        AND (
-            EXISTS (
-                SELECT 1
-                FROM team_members tm
-                WHERE tm.team_id = teams.id
-                  AND tm.user_id = auth.uid()
-            )
-            OR EXISTS (
-                SELECT 1
-                FROM game_sessions gs
-                JOIN profiles actor ON actor.organization_id = gs.organization_id
-                WHERE gs.id = teams.session_id
-                  AND actor.id = auth.uid()
-            )
-        )
-    );
-
-CREATE POLICY team_manage_session ON teams
-    FOR ALL TO authenticated
-    USING (
-        auth.uid() IS NOT NULL
-        AND EXISTS (
-            SELECT 1
-            FROM game_sessions gs
-            JOIN profiles actor ON actor.organization_id = gs.organization_id
-            WHERE gs.id = teams.session_id
-              AND actor.id = auth.uid()
-              AND (
-                  actor.role IN ('admin', 'organisme')
-                  OR gs.formateur_id = auth.uid()
-              )
-        )
-    )
-    WITH CHECK (
-        auth.uid() IS NOT NULL
-        AND EXISTS (
-            SELECT 1
-            FROM game_sessions gs
-            JOIN profiles actor ON actor.organization_id = gs.organization_id
-            WHERE gs.id = teams.session_id
-              AND actor.id = auth.uid()
-              AND (
-                  actor.role IN ('admin', 'organisme')
-                  OR gs.formateur_id = auth.uid()
-              )
-        )
-    );
-
--- Team members
-CREATE POLICY team_member_read_session ON team_members
-    FOR SELECT TO authenticated
-    USING (
-        auth.uid() IS NOT NULL
-        AND (
-            team_members.user_id = auth.uid()
-            OR EXISTS (
-                SELECT 1
-                FROM team_members teammate
-                WHERE teammate.team_id = team_members.team_id
-                  AND teammate.user_id = auth.uid()
-            )
-            OR EXISTS (
-                SELECT 1
-                FROM teams t
-                JOIN game_sessions gs ON gs.id = t.session_id
-                JOIN profiles actor ON actor.organization_id = gs.organization_id
-                WHERE t.id = team_members.team_id
-                  AND actor.id = auth.uid()
-            )
-        )
-    );
-
-CREATE POLICY team_member_manage_session ON team_members
-    FOR ALL TO authenticated
-    USING (
-        auth.uid() IS NOT NULL
-        AND EXISTS (
-            SELECT 1
-            FROM teams t
-            JOIN game_sessions gs ON gs.id = t.session_id
-            JOIN profiles actor ON actor.organization_id = gs.organization_id
-            WHERE t.id = team_members.team_id
-              AND actor.id = auth.uid()
-              AND (
-                  actor.role IN ('admin', 'organisme')
-                  OR gs.formateur_id = auth.uid()
-              )
-        )
-    )
-    WITH CHECK (
-        auth.uid() IS NOT NULL
-        AND EXISTS (
-            SELECT 1
-            FROM teams t
-            JOIN game_sessions gs ON gs.id = t.session_id
-            JOIN profiles actor ON actor.organization_id = gs.organization_id
-            WHERE t.id = team_members.team_id
-              AND actor.id = auth.uid()
-              AND (
-                  actor.role IN ('admin', 'organisme')
-                  OR gs.formateur_id = auth.uid()
-              )
-        )
-    );
-
--- Turns
-CREATE POLICY turn_read_session ON turns
-    FOR SELECT TO authenticated
-    USING (
-        auth.uid() IS NOT NULL
-        AND EXISTS (
-            SELECT 1
-            FROM game_sessions gs
-            JOIN profiles actor ON actor.organization_id = gs.organization_id
-            WHERE gs.id = turns.session_id
-              AND actor.id = auth.uid()
-        )
-    );
-
-CREATE POLICY turn_manage_session ON turns
-    FOR ALL TO authenticated
-    USING (
-        auth.uid() IS NOT NULL
-        AND EXISTS (
-            SELECT 1
-            FROM game_sessions gs
-            JOIN profiles actor ON actor.organization_id = gs.organization_id
-            WHERE gs.id = turns.session_id
-              AND actor.id = auth.uid()
-              AND (
-                  actor.role IN ('admin', 'organisme')
-                  OR gs.formateur_id = auth.uid()
-              )
-        )
-    )
-    WITH CHECK (
-        auth.uid() IS NOT NULL
-        AND EXISTS (
-            SELECT 1
-            FROM game_sessions gs
-            JOIN profiles actor ON actor.organization_id = gs.organization_id
-            WHERE gs.id = turns.session_id
-              AND actor.id = auth.uid()
-              AND (
-                  actor.role IN ('admin', 'organisme')
-                  OR gs.formateur_id = auth.uid()
-              )
-        )
-    );
-
--- Decisions
-CREATE POLICY decision_read_session ON decisions
-    FOR SELECT TO authenticated
-    USING (
-        auth.uid() IS NOT NULL
-        AND (
-            decisions.user_id = auth.uid()
-            OR EXISTS (
-                SELECT 1
-                FROM team_members tm
-                WHERE tm.team_id = decisions.team_id
-                  AND tm.user_id = auth.uid()
-            )
-            OR EXISTS (
-                SELECT 1
-                FROM teams t
-                JOIN game_sessions gs ON gs.id = t.session_id
-                JOIN profiles actor ON actor.organization_id = gs.organization_id
-                WHERE t.id = decisions.team_id
-                  AND actor.id = auth.uid()
-            )
-        )
-    );
-
-CREATE POLICY decision_insert_member ON decisions
-    FOR INSERT TO authenticated
-    WITH CHECK (
-        auth.uid() IS NOT NULL
-        AND decisions.user_id = auth.uid()
-        AND EXISTS (
-            SELECT 1
-            FROM team_members tm
-            JOIN teams t ON t.id = tm.team_id
-            JOIN turns tr ON tr.session_id = t.session_id
-            WHERE tm.team_id = decisions.team_id
-              AND tm.user_id = auth.uid()
-              AND tr.id = decisions.turn_id
-        )
-    );
-
-CREATE POLICY decision_update_member ON decisions
-    FOR UPDATE TO authenticated
-    USING (
-        auth.uid() IS NOT NULL
-        AND (
-            decisions.user_id = auth.uid()
-            OR EXISTS (
-                SELECT 1
-                FROM teams t
-                JOIN game_sessions gs ON gs.id = t.session_id
-                JOIN profiles actor ON actor.organization_id = gs.organization_id
-                WHERE t.id = decisions.team_id
-                  AND actor.id = auth.uid()
-                  AND (
-                      actor.role IN ('admin', 'organisme')
-                      OR gs.formateur_id = auth.uid()
-                  )
-            )
-        )
-    )
-    WITH CHECK (
-        auth.uid() IS NOT NULL
-        AND (
-            decisions.user_id = auth.uid()
-            OR EXISTS (
-                SELECT 1
-                FROM teams t
-                JOIN game_sessions gs ON gs.id = t.session_id
-                JOIN profiles actor ON actor.organization_id = gs.organization_id
-                WHERE t.id = decisions.team_id
-                  AND actor.id = auth.uid()
-                  AND (
-                      actor.role IN ('admin', 'organisme')
-                      OR gs.formateur_id = auth.uid()
-                  )
-            )
-        )
-    );
-
-CREATE POLICY decision_delete_staff ON decisions
-    FOR DELETE TO authenticated
-    USING (
-        auth.uid() IS NOT NULL
-        AND EXISTS (
-            SELECT 1
-            FROM teams t
-            JOIN game_sessions gs ON gs.id = t.session_id
-            JOIN profiles actor ON actor.organization_id = gs.organization_id
-            WHERE t.id = decisions.team_id
-              AND actor.id = auth.uid()
-              AND (
-                  actor.role IN ('admin', 'organisme')
-                  OR gs.formateur_id = auth.uid()
-              )
-        )
-    );
-
--- Turn results
-CREATE POLICY result_read_session ON turn_results
-    FOR SELECT TO authenticated
-    USING (
-        auth.uid() IS NOT NULL
-        AND (
-            EXISTS (
-                SELECT 1
-                FROM team_members tm
-                WHERE tm.team_id = turn_results.team_id
-                  AND tm.user_id = auth.uid()
-            )
-            OR EXISTS (
-                SELECT 1
-                FROM turns tr
-                JOIN game_sessions gs ON gs.id = tr.session_id
-                JOIN profiles actor ON actor.organization_id = gs.organization_id
-                WHERE tr.id = turn_results.turn_id
-                  AND actor.id = auth.uid()
-            )
-        )
-    );
-
-CREATE POLICY result_manage_session ON turn_results
-    FOR ALL TO authenticated
-    USING (
-        auth.uid() IS NOT NULL
-        AND EXISTS (
-            SELECT 1
-            FROM turns tr
-            JOIN game_sessions gs ON gs.id = tr.session_id
-            JOIN profiles actor ON actor.organization_id = gs.organization_id
-            WHERE tr.id = turn_results.turn_id
-              AND actor.id = auth.uid()
-              AND (
-                  actor.role IN ('admin', 'organisme')
-                  OR gs.formateur_id = auth.uid()
-              )
-        )
-    )
-    WITH CHECK (
-        auth.uid() IS NOT NULL
-        AND EXISTS (
-            SELECT 1
-            FROM turns tr
-            JOIN game_sessions gs ON gs.id = tr.session_id
-            JOIN profiles actor ON actor.organization_id = gs.organization_id
-            WHERE tr.id = turn_results.turn_id
-              AND actor.id = auth.uid()
-              AND (
-                  actor.role IN ('admin', 'organisme')
-                  OR gs.formateur_id = auth.uid()
-              )
-        )
-    );
-
--- Organization invites
-CREATE POLICY invites_select_org ON organization_invites
-    FOR SELECT TO authenticated
-    USING (
-        auth.uid() IS NOT NULL
-        AND EXISTS (
-            SELECT 1
-            FROM profiles actor
-            WHERE actor.id = auth.uid()
-              AND actor.organization_id = organization_invites.organization_id
-              AND actor.role IN ('admin', 'organisme')
-        )
-    );
-
-CREATE POLICY invites_insert_org ON organization_invites
-    FOR INSERT TO authenticated
-    WITH CHECK (
-        auth.uid() IS NOT NULL
-        AND invited_by = auth.uid()
-        AND EXISTS (
-            SELECT 1
-            FROM profiles actor
-            WHERE actor.id = auth.uid()
-              AND actor.organization_id = organization_invites.organization_id
-              AND actor.role IN ('admin', 'organisme')
-        )
-    );
-
-CREATE POLICY invites_update_org ON organization_invites
-    FOR UPDATE TO authenticated
-    USING (
-        auth.uid() IS NOT NULL
-        AND EXISTS (
-            SELECT 1
-            FROM profiles actor
-            WHERE actor.id = auth.uid()
-              AND actor.organization_id = organization_invites.organization_id
-              AND actor.role IN ('admin', 'organisme')
-        )
-    )
-    WITH CHECK (
-        auth.uid() IS NOT NULL
-        AND EXISTS (
-            SELECT 1
-            FROM profiles actor
-            WHERE actor.id = auth.uid()
-              AND actor.organization_id = organization_invites.organization_id
-              AND actor.role IN ('admin', 'organisme')
-        )
-    );
-
-CREATE POLICY invites_delete_org ON organization_invites
-    FOR DELETE TO authenticated
-    USING (
-        auth.uid() IS NOT NULL
-        AND EXISTS (
-            SELECT 1
-            FROM profiles actor
-            WHERE actor.id = auth.uid()
-              AND actor.organization_id = organization_invites.organization_id
-              AND actor.role IN ('admin', 'organisme')
-        )
-    );

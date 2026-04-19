@@ -125,3 +125,15 @@ supabase/
 # Usage directory (contains large node_modules)
 usage/apps/web/node_modules/
 usage/**/node_modules/
+
+# Claude Code / AI tooling
+.claude/
+.agents/
+skills-lock.json
+.mcp.json
+/tmp/next.log
+/tmp/django.log
+/tmp/gmix_*.pid
+
+# Build artifacts
+tsconfig.tsbuildinfo

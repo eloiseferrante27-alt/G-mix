@@ -12,8 +12,7 @@ interface SidebarProps {
 
 const adminLinks = [
   { href: '/admin', label: 'Tableau de bord', icon: '📊' },
-  { href: '/admin/organizations', label: 'Organisations', icon: '🏢' },
-  { href: '/admin/users', label: 'Utilisateurs', icon: '👤' },
+  { href: '/admin/organizations', label: 'Organisations & Membres', icon: '🏢' },
 ];
 
 const organismeLinks = [
@@ -28,6 +27,7 @@ const formateurLinks = [
   { href: '/formateur/sessions', label: 'Sessions', icon: '🎮' },
   { href: '/formateur/scenarios', label: 'Scénarios', icon: '📝' },
   { href: '/formateur/teams', label: 'Équipes', icon: '👥' },
+  { href: '/formateur/invitations', label: 'Inviter des joueurs', icon: '✉️' },
 ];
 
 const joueurLinks = [

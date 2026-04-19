@@ -8,31 +8,38 @@ import { Textarea } from '@/components/ui/textarea';
 import Link from 'next/link';
 import Anthropic from '@anthropic-ai/sdk';
 
-export default async function ScenarioDetailPage({ params }: { params: { id: string } }) {
+export default async function ScenarioDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await getSession();
+  if (!session) redirect('/login');
 
-  if (!session) {
-    redirect('/login');
-  }
+  const { id } = await params;
 
   const supabase = await createClient();
   const { data: scenario } = await supabase
     .from('scenarios')
     .select('*')
-    .eq('id', params.id)
-    .eq('created_by', session.userId)
+    .eq('id', id)
     .single();
 
-  if (!scenario) {
-    redirect('/formateur/scenarios');
-  }
+  if (!scenario) redirect('/formateur/scenarios');
+
+  const scenarioId = scenario.id as string;
 
   async function handleGenerateWithAI(formData: FormData) {
     'use server';
     const prompt = formData.get('prompt') as string;
+    const sess = await getSession();
+    if (!sess) redirect('/login');
 
-    let config = scenario.config;
-    let description = scenario.description;
+    const supabase = await createClient();
+    const { data: current } = await supabase
+      .from('scenarios')
+      .select('config, description')
+      .eq('id', scenarioId)
+      .single();
+
+    let config = current?.config ?? {};
+    let description = current?.description ?? '';
 
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (apiKey) {
@@ -40,13 +47,22 @@ export default async function ScenarioDetailPage({ params }: { params: { id: str
         const client = new Anthropic({ apiKey });
         const message = await client.messages.create({
           model: 'claude-haiku-4-5-20251001',
-          max_tokens: 1024,
+          max_tokens: 2048,
           messages: [{
             role: 'user',
-            content: `Tu es un expert en business games pédagogiques. Génère un scénario en JSON pour un jeu de simulation de chaîne logistique basé sur ce contexte: "${prompt}".
-              Réponds UNIQUEMENT avec un JSON valide contenant:
-              - description: string (description du scénario)
-              - config: { total_turns: number, max_teams: number, min_teams: number, parameters: [{id, label, type, min, max, unit, default, description}], kpis: [{id, label, unit}], events: [{turn, title, description, impact}] }`,
+            content: `Tu es un expert en business games pédagogiques. Génère un scénario en JSON pour un jeu de simulation basé sur ce contexte: "${prompt}".
+Réponds UNIQUEMENT avec un JSON valide contenant:
+{
+  "description": "string",
+  "config": {
+    "total_turns": number,
+    "max_teams": number,
+    "min_teams": 2,
+    "parameters": [{"id":"string","label":"string","type":"number","min":number,"max":number,"unit":"string","default":number,"description":"string"}],
+    "kpis": [{"id":"string","label":"string","unit":"string"}],
+    "events": [{"turn":number,"title":"string","description":"string","impact":"string"}]
+  }
+}`,
           }],
         });
         const text = (message.content[0] as { type: string; text: string }).text;
@@ -61,13 +77,12 @@ export default async function ScenarioDetailPage({ params }: { params: { id: str
       }
     }
 
-    const supabase = await createClient();
     await supabase
       .from('scenarios')
       .update({ config, description })
-      .eq('id', scenario.id);
+      .eq('id', scenarioId);
 
-    redirect(`/formateur/scenarios/${scenario.id}`);
+    redirect(`/formateur/scenarios/${scenarioId}`);
   }
 
   const config = scenario.config as {
@@ -86,7 +101,7 @@ export default async function ScenarioDetailPage({ params }: { params: { id: str
               ← Retour aux scénarios
             </Link>
             <h1 className="text-2xl font-bold text-slate-900">{scenario.name}</h1>
-            <p className="text-slate-500 mt-1">{scenario.description}</p>
+            <p className="text-slate-500 mt-1">{scenario.description || 'Aucune description'}</p>
           </div>
           <div className="flex gap-2">
             <Badge variant="info">{config.total_turns ?? '?'} tours</Badge>
@@ -109,7 +124,7 @@ export default async function ScenarioDetailPage({ params }: { params: { id: str
               </form>
               {!process.env.ANTHROPIC_API_KEY && (
                 <p className="mt-3 text-xs text-amber-600">
-                  Configurez ANTHROPIC_API_KEY dans .env.local pour activer la génération IA.
+                  ⚠ Configurez ANTHROPIC_API_KEY dans .env.local pour activer la génération IA.
                 </p>
               )}
             </CardContent>
@@ -120,19 +135,21 @@ export default async function ScenarioDetailPage({ params }: { params: { id: str
             <CardContent className="space-y-4 text-sm">
               <div>
                 <h3 className="font-semibold text-slate-900 mb-2">Paramètres de base</h3>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>Tours : <span className="font-medium">{config.total_turns ?? '—'}</span></div>
-                  <div>Équipes max : <span className="font-medium">{config.max_teams ?? '—'}</span></div>
-                  <div>Équipes min : <span className="font-medium">{config.min_teams ?? 2}</span></div>
+                <div className="grid grid-cols-2 gap-2 text-slate-600">
+                  <div>Tours : <span className="font-medium text-slate-900">{config.total_turns ?? '—'}</span></div>
+                  <div>Équipes max : <span className="font-medium text-slate-900">{config.max_teams ?? '—'}</span></div>
+                  <div>Équipes min : <span className="font-medium text-slate-900">{config.min_teams ?? 2}</span></div>
                 </div>
               </div>
 
               {config.parameters && config.parameters.length > 0 && (
                 <div>
-                  <h3 className="font-semibold text-slate-900 mb-2">Paramètres de décision</h3>
-                  <ul className="space-y-1">
+                  <h3 className="font-semibold text-slate-900 mb-2">
+                    Paramètres de décision ({config.parameters.length})
+                  </h3>
+                  <ul className="space-y-1 text-slate-600">
                     {config.parameters.map((p, i) => (
-                      <li key={i}>• {p.label} ({p.type})</li>
+                      <li key={i}>• {p.label} <span className="text-slate-400">({p.type})</span></li>
                     ))}
                   </ul>
                 </div>
@@ -140,10 +157,10 @@ export default async function ScenarioDetailPage({ params }: { params: { id: str
 
               {config.kpis && config.kpis.length > 0 && (
                 <div>
-                  <h3 className="font-semibold text-slate-900 mb-2">KPIs</h3>
-                  <ul className="space-y-1">
+                  <h3 className="font-semibold text-slate-900 mb-2">KPIs ({config.kpis.length})</h3>
+                  <ul className="space-y-1 text-slate-600">
                     {config.kpis.map((k, i) => (
-                      <li key={i}>• {k.label} ({k.unit})</li>
+                      <li key={i}>• {k.label} <span className="text-slate-400">({k.unit})</span></li>
                     ))}
                   </ul>
                 </div>
@@ -151,13 +168,19 @@ export default async function ScenarioDetailPage({ params }: { params: { id: str
 
               {config.events && config.events.length > 0 && (
                 <div>
-                  <h3 className="font-semibold text-slate-900 mb-2">Événements</h3>
-                  <ul className="space-y-1">
+                  <h3 className="font-semibold text-slate-900 mb-2">Événements ({config.events.length})</h3>
+                  <ul className="space-y-1 text-slate-600">
                     {config.events.map((e, i) => (
                       <li key={i}>• Tour {e.turn} — {e.title}</li>
                     ))}
                   </ul>
                 </div>
+              )}
+
+              {!config.parameters?.length && !config.kpis?.length && !config.events?.length && (
+                <p className="text-slate-400 italic">
+                  Utilisez la génération IA pour configurer ce scénario.
+                </p>
               )}
             </CardContent>
           </Card>

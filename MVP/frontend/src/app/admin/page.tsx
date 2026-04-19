@@ -13,13 +13,13 @@ export default async function AdminDashboard() {
     { count: sessionCount },
   ] = await Promise.all([
     supabase.from('organizations').select('id', { count: 'exact', head: true }),
-    supabase.from('profiles').select('id', { count: 'exact', head: true }),
+    supabase.from('profiles').select('id', { count: 'exact', head: true }).neq('role', 'admin'),
     supabase.from('game_sessions').select('id', { count: 'exact', head: true }),
   ]);
 
   const stats = [
     { label: 'Organisations', value: orgCount ?? 0, icon: '🏢', href: '/admin/organizations' },
-    { label: 'Utilisateurs', value: userCount ?? 0, icon: '👤', href: '/admin/users' },
+    { label: 'Utilisateurs', value: userCount ?? 0, icon: '👤', href: '/admin/organizations' },
     { label: 'Sessions de jeu', value: sessionCount ?? 0, icon: '🎮', href: '/formateur' },
   ];
 
@@ -53,8 +53,7 @@ export default async function AdminDashboard() {
           <CardHeader><CardTitle>Actions rapides</CardTitle></CardHeader>
           <CardContent className="space-y-3">
             {[
-              { href: '/admin/organizations', label: '🏢 Gérer les organisations' },
-              { href: '/admin/users', label: '👤 Gérer les utilisateurs' },
+              { href: '/admin/organizations', label: '🏢 Gérer les organisations et membres' },
               { href: '/formateur/scenarios/new', label: '📝 Créer un scénario' },
             ].map((action) => (
               <Link
