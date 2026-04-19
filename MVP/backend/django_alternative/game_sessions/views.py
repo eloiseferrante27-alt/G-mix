@@ -4,7 +4,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 
-from gmix.permissions import IsAdminOrFormateur
+from gmix.permissions import IsStaffProfile
 from .models import GameSession, Team, TeamMember, Turn
 from .serializers import (
     GameSessionSerializer, GameSessionWriteSerializer,
@@ -21,12 +21,12 @@ class SessionListView(APIView):
         return Response(GameSessionSerializer(qs, many=True).data)
 
     def post(self, request):
-        if request.user.profile.role not in ('admin', 'formateur'):
+        if request.user.profile.role not in ('admin', 'organisme', 'formateur'):
             return Response({'error': 'Forbidden'}, status=403)
         profile = request.user.profile
         s = GameSessionWriteSerializer(data={
             **request.data,
-            'formateur': profile.pk,
+            'formateur': request.data.get('formateur') or profile.pk,
             'organization': str(profile.organization.pk) if profile.organization else None,
         })
         s.is_valid(raise_exception=True)
@@ -54,7 +54,7 @@ class SessionDetailView(APIView):
         if not session:
             return Response({'error': 'Not found'}, status=404)
         profile = request.user.profile
-        if session.formateur != profile and profile.role != 'admin':
+        if session.formateur != profile and profile.role not in ('admin', 'organisme'):
             return Response({'error': 'Forbidden'}, status=403)
         s = GameSessionWriteSerializer(session, data=request.data, partial=True)
         s.is_valid(raise_exception=True)
@@ -63,7 +63,7 @@ class SessionDetailView(APIView):
 
 
 class SessionStartView(APIView):
-    permission_classes = [IsAdminOrFormateur]
+    permission_classes = [IsStaffProfile]
 
     def post(self, request, pk):
         try:
@@ -92,7 +92,7 @@ class SessionTeamsView(APIView):
         return Response(TeamSerializer(teams, many=True).data)
 
     def post(self, request, pk):
-        if request.user.profile.role not in ('admin', 'formateur'):
+        if request.user.profile.role not in ('admin', 'organisme', 'formateur'):
             return Response({'error': 'Forbidden'}, status=403)
         try:
             session = GameSession.objects.get(pk=pk)
@@ -114,7 +114,7 @@ class SessionTurnsView(APIView):
         return Response(TurnSerializer(turns, many=True).data)
 
     def post(self, request, pk):
-        if request.user.profile.role not in ('admin', 'formateur'):
+        if request.user.profile.role not in ('admin', 'organisme', 'formateur'):
             return Response({'error': 'Forbidden'}, status=403)
         try:
             session = GameSession.objects.get(pk=pk)

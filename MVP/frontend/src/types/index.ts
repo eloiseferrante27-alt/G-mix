@@ -7,7 +7,7 @@ export interface Organization {
   name: string;
   plan: 'free' | 'pro' | 'enterprise';
   contact_email?: string;
-  owner_id?: string;
+  owner_id?: string | null;
   max_formateurs?: number;
   max_scenarios?: number;
   max_sessions?: number;
@@ -21,7 +21,7 @@ export interface Profile {
   first_name: string;
   last_name: string;
   role: Role;
-  organization_id: string;
+  organization_id: string | null;
   created_at: string;
 }
 
@@ -89,10 +89,11 @@ export interface LearningResource {
 
 export interface GameSession {
   id: string;
-  scenario_id: string;
-  formateur_id: string;
+  scenario_id: string | null;
+  formateur_id: string | null;
   organization_id: string;
   name: string;
+  description?: string;
   status: SessionStatus;
   current_turn: number;
   total_turns: number;

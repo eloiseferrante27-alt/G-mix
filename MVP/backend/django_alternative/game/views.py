@@ -3,7 +3,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 
-from gmix.permissions import IsAdminOrFormateur
+from gmix.permissions import IsStaffProfile
 from game_sessions.models import GameSession, Turn
 from .models import Decision, TurnResult
 from .serializers import DecisionSerializer, TurnResultSerializer
@@ -42,7 +42,7 @@ class SubmitDecisionView(APIView):
 
 
 class CalculateResultsView(APIView):
-    permission_classes = [IsAdminOrFormateur]
+    permission_classes = [IsStaffProfile]
 
     def post(self, request):
         turn_id = request.data.get('turn_id')

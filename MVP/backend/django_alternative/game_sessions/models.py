@@ -1,5 +1,6 @@
 import uuid
 from django.db import models
+from django.db.models import F, Q
 
 SESSION_STATUS = [('draft', 'Draft'), ('active', 'Active'), ('completed', 'Completed'), ('archived', 'Archived')]
 TURN_STATUS = [('pending', 'Pending'), ('open', 'Open'), ('closed', 'Closed')]
@@ -8,15 +9,18 @@ TURN_STATUS = [('pending', 'Pending'), ('open', 'Open'), ('closed', 'Closed')]
 class GameSession(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     scenario = models.ForeignKey(
-        'scenarios.Scenario', on_delete=models.RESTRICT, related_name='sessions'
+        'scenarios.Scenario', null=True, blank=True,
+        on_delete=models.RESTRICT, related_name='sessions'
     )
     formateur = models.ForeignKey(
-        'accounts.Profile', on_delete=models.RESTRICT, related_name='formateur_sessions'
+        'accounts.Profile', null=True, blank=True,
+        on_delete=models.RESTRICT, related_name='formateur_sessions'
     )
     organization = models.ForeignKey(
         'organizations.Organization', on_delete=models.CASCADE, related_name='game_sessions'
     )
     name = models.CharField(max_length=255)
+    description = models.TextField(default='')
     status = models.CharField(max_length=20, choices=SESSION_STATUS, default='draft')
     current_turn = models.IntegerField(default=0)
     total_turns = models.IntegerField(default=6)
@@ -28,6 +32,16 @@ class GameSession(models.Model):
     class Meta:
         db_table = 'game_sessions'
         ordering = ['-created_at']
+        constraints = [
+            models.CheckConstraint(
+                check=Q(status='draft') | (Q(scenario__isnull=False) & Q(formateur__isnull=False)),
+                name='django_game_sessions_required_links_when_not_draft',
+            ),
+            models.CheckConstraint(
+                check=Q(current_turn__gte=0) & Q(current_turn__lte=F('total_turns')),
+                name='django_game_sessions_turn_bounds',
+            ),
+        ]
 
     def __str__(self):
         return f'{self.name} ({self.status})'

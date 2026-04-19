@@ -7,7 +7,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from .models import Profile
 from .serializers import ProfileSerializer, RegisterSerializer
-from gmix.permissions import IsAdminOrFormateur
+from gmix.permissions import IsStaffProfile
 
 
 def _tokens(user):
@@ -48,7 +48,7 @@ class MeView(APIView):
 
 
 class ProfileListView(APIView):
-    permission_classes = [IsAdminOrFormateur]
+    permission_classes = [IsStaffProfile]
 
     def get(self, request):
         role = request.user.profile.role

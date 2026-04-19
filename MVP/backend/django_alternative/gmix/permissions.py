@@ -16,3 +16,13 @@ class IsAdmin(BasePermission):
 class IsAdminOrFormateur(BasePermission):
     def has_permission(self, request, view):
         return _role(request) in ('admin', 'formateur')
+
+
+class IsStaffProfile(BasePermission):
+    def has_permission(self, request, view):
+        return _role(request) in ('admin', 'organisme', 'formateur')
+
+
+class IsAdminOrOrganisme(BasePermission):
+    def has_permission(self, request, view):
+        return _role(request) in ('admin', 'organisme')

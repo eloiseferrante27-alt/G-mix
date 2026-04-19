@@ -1,61 +1,83 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createServiceClient } from '@/lib/supabase/server';
+
+type DecisionPayload = {
+  parameter_id?: string;
+  value?: number;
+};
 
 export async function POST(request: NextRequest) {
   try {
     const { sessionId, turnNumber } = await request.json();
+    if (!sessionId || typeof turnNumber !== 'number') {
+      return NextResponse.json({ error: 'Missing sessionId or turnNumber' }, { status: 400 });
+    }
 
-    const supabase = await createClient();
-    
-    // Récupérer la session de jeu
+    const supabase = createServiceClient();
+
     const { data: gameSession } = await supabase
       .from('game_sessions')
-      .select('*, scenarios(config)')
+      .select('id, scenarios(config)')
       .eq('id', sessionId)
       .single();
 
     if (!gameSession) {
-      return NextResponse.json(
-        { error: 'Session not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: 'Session not found' }, { status: 404 });
     }
 
-    const teams = gameSession.teams as any[] || [];
-    const config = gameSession.scenarios?.config || {};
-    
-    // Calculer les résultats pour chaque équipe
-    const results = teams.map(team => {
-      const teamDecisions = team.decisions?.[turnNumber] || [];
+    const { data: turn } = await supabase
+      .from('turns')
+      .select('id')
+      .eq('session_id', sessionId)
+      .eq('turn_number', turnNumber)
+      .single();
+
+    if (!turn) {
+      return NextResponse.json({ error: 'Turn not found' }, { status: 404 });
+    }
+
+    const [{ data: teams }, { data: decisions }] = await Promise.all([
+      supabase.from('teams').select('id, name').eq('session_id', sessionId),
+      supabase.from('decisions').select('team_id, data').eq('turn_id', turn.id),
+    ]);
+
+    const decisionsByTeam = new Map<string, DecisionPayload[]>();
+    for (const decision of decisions ?? []) {
+      const raw = decision.data;
+      const normalized = Array.isArray(raw)
+        ? raw as DecisionPayload[]
+        : Object.entries((raw ?? {}) as Record<string, number>).map(([parameter_id, value]) => ({
+            parameter_id,
+            value: Number(value),
+          }));
+      decisionsByTeam.set(decision.team_id, normalized);
+    }
+
+    const config = (gameSession.scenarios as { config?: Record<string, unknown> } | null)?.config ?? {};
+
+    const results = (teams ?? []).map((team) => {
+      const teamDecisions = decisionsByTeam.get(team.id) ?? [];
       const kpis = calculateKPIs(teamDecisions, config, turnNumber);
-      
+
       return {
+        turn_id: turn.id,
         team_id: team.id,
-        turn: turnNumber,
-        decisions: teamDecisions,
-        kpis: kpis,
-        timestamp: new Date().toISOString()
+        kpis,
+        score: kpis.profit,
       };
     });
 
-    // Mettre à jour la session avec les résultats
-    const updatedResults = [
-      ...(gameSession.results || []),
-      ...results
-    ];
+    if (results.length > 0) {
+      const { error } = await supabase
+        .from('turn_results')
+        .upsert(results, { onConflict: 'turn_id,team_id' });
 
-    await supabase
-      .from('game_sessions')
-      .update({
-        results: updatedResults
-      })
-      .eq('id', sessionId);
+      if (error) {
+        throw error;
+      }
+    }
 
-    return NextResponse.json({
-      success: true,
-      results: results
-    });
-
+    return NextResponse.json({ success: true, results });
   } catch (error) {
     console.error('Game computation error:', error);
     return NextResponse.json(
@@ -65,38 +87,26 @@ export async function POST(request: NextRequest) {
   }
 }
 
-function calculateKPIs(decisions: any[], config: any, turn: number): any {
-  // Simulation de calcul de KPIs basée sur les décisions
-  // En production, cela utiliserait des formules mathématiques complexes
-  
-  const production = decisions.find(d => d.parameter_id === 'production')?.value || 0;
-  const price = decisions.find(d => d.parameter_id === 'prix_vente')?.value || 0;
-  const safetyStock = decisions.find(d => d.parameter_id === 'stock_securite')?.value || 0;
+function calculateKPIs(decisions: DecisionPayload[], _config: Record<string, unknown>, turn: number) {
+  const production = decisions.find((d) => d.parameter_id === 'production' || d.parameter_id === 'production_volume')?.value || 0;
+  const price = decisions.find((d) => d.parameter_id === 'prix_vente' || d.parameter_id === 'selling_price')?.value || 0;
+  const safetyStock = decisions.find((d) => d.parameter_id === 'stock_securite' || d.parameter_id === 'inventory_target')?.value || 0;
 
-  // Simulation de demande (aléatoire avec tendance)
   const baseDemand = 500 + (turn * 50);
   const demandVariation = Math.random() * 200 - 100;
   const demand = Math.max(0, baseDemand + demandVariation);
 
-  // Calcul du profit
   const revenue = Math.min(production, demand) * price;
-  const productionCost = production * 10; // Coût de production unitaire
-  const storageCost = safetyStock * 2; // Coût de stockage unitaire
+  const productionCost = production * 10;
+  const storageCost = safetyStock * 2;
   const profit = revenue - productionCost - storageCost;
-
-  // Calcul du niveau de service
-  const serviceLevel = production >= demand ? 100 : (production / demand) * 100;
-
-  // Calcul du stock moyen
+  const serviceLevel = demand === 0 ? 100 : (production >= demand ? 100 : (production / demand) * 100);
   const avgStock = safetyStock + (production - demand) / 2;
-
-  // Calcul de la trésorerie (simplifié)
-  const cashFlow = profit;
 
   return {
     profit: Math.round(profit),
     service_level: Math.round(serviceLevel),
     stock_level: Math.round(avgStock),
-    cash_flow: Math.round(cashFlow)
+    cash_flow: Math.round(profit),
   };
 }

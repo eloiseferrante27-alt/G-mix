@@ -32,14 +32,15 @@ class GameSessionSerializer(serializers.ModelSerializer):
     scenario = ScenarioSerializer(read_only=True)
     teams = TeamSerializer(many=True, read_only=True)
     organization_id = serializers.UUIDField(source='organization.id', read_only=True)
-    formateur_id = serializers.UUIDField(source='formateur.id', read_only=True)
+    formateur_id = serializers.UUIDField(source='formateur.id', read_only=True, allow_null=True)
+    scenario_id = serializers.UUIDField(source='scenario.id', read_only=True, allow_null=True)
 
     class Meta:
         model = GameSession
         fields = [
-            'id', 'name', 'status', 'current_turn', 'total_turns', 'config',
+            'id', 'name', 'description', 'status', 'current_turn', 'total_turns', 'config',
             'created_at', 'started_at', 'ended_at',
-            'scenario', 'organization_id', 'formateur_id', 'teams',
+            'scenario', 'scenario_id', 'organization_id', 'formateur_id', 'teams',
         ]
         read_only_fields = ['id', 'created_at']
 
@@ -47,4 +48,4 @@ class GameSessionSerializer(serializers.ModelSerializer):
 class GameSessionWriteSerializer(serializers.ModelSerializer):
     class Meta:
         model = GameSession
-        fields = ['name', 'scenario', 'organization', 'formateur', 'total_turns', 'config']
+        fields = ['name', 'description', 'scenario', 'organization', 'formateur', 'status', 'total_turns', 'config']

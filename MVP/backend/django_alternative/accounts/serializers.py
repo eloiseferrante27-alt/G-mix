@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
 from .models import Profile
+from organizations.models import Organization
 
 
 class ProfileSerializer(serializers.ModelSerializer):
@@ -23,8 +24,10 @@ class RegisterSerializer(serializers.Serializer):
     first_name = serializers.CharField(default='')
     last_name = serializers.CharField(default='')
     role = serializers.ChoiceField(choices=['admin', 'organisme', 'formateur', 'joueur'], default='joueur')
+    org_name = serializers.CharField(required=False, allow_blank=True, default='')
 
     def create(self, validated_data):
+        org_name = validated_data.pop('org_name', '').strip()
         user = User.objects.create_user(
             username=validated_data['email'],
             email=validated_data['email'],
@@ -32,5 +35,15 @@ class RegisterSerializer(serializers.Serializer):
             first_name=validated_data.get('first_name', ''),
             last_name=validated_data.get('last_name', ''),
         )
-        Profile.objects.create(user=user, role=validated_data.get('role', 'joueur'))
+        profile = Profile.objects.create(user=user, role=validated_data.get('role', 'joueur'))
+
+        if profile.role == 'organisme' and org_name:
+            organization = Organization.objects.create(
+                name=org_name,
+                contact_email=user.email,
+                owner=profile,
+            )
+            profile.organization = organization
+            profile.save(update_fields=['organization'])
+
         return user
