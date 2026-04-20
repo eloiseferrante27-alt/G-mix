@@ -131,9 +131,9 @@ export default async function OrganismeSettingsPage({
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {[
-                { label: 'Formateurs max', value: org.max_formateurs },
-                { label: 'Sessions max', value: org.max_sessions },
-                { label: 'Scénarios max', value: org.max_scenarios },
+                { label: 'Formateurs max', value: plan?.maxFormateurs },
+                { label: 'Sessions max', value: plan?.maxSessions },
+                { label: 'Scénarios max', value: plan?.maxScenarios },
                 { label: 'Joueurs max', value: plan?.maxJoueurs },
               ].map((item) => (
                 <div key={item.label} className="bg-slate-50 p-3 rounded-lg">

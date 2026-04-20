@@ -35,14 +35,13 @@ export default async function FormateurDashboard() {
       .order('created_at', { ascending: false }),
     supabase
       .from('profiles')
-      .select('organization_id, organizations(id, name, plan, ai_generation_enabled, max_scenarios, max_sessions)')
+      .select('organization_id, organizations(id, name, plan, ai_generation_enabled)')
       .eq('id', session!.userId)
       .single(),
   ]);
 
   const org = profile?.organizations as unknown as {
-    id: string; name: string; plan: string
-    ai_generation_enabled: boolean; max_scenarios: number; max_sessions: number
+    id: string; name: string; plan: string; ai_generation_enabled: boolean;
   } | null;
   const planCfg = org ? getPlanConfig(org.plan) : null;
 

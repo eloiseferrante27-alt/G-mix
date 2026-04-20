@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { getPlanConfig, getPlanLimits } from '@/lib/plans';
 
 const roleVariant: Record<string, 'default' | 'info' | 'warning' | 'success'> = {
   admin: 'default', organisme: 'info', formateur: 'warning', joueur: 'success',
@@ -71,11 +72,11 @@ export default async function AdminOrganizationDetailPage({
     const contact_email = (formData.get('contact_email') as string)?.trim() || null;
     const plan = formData.get('plan') as string;
     const ai_generation_enabled = formData.get('ai_generation_enabled') === 'on';
-    const max_formateurs = parseInt(formData.get('max_formateurs') as string) || -1;
-    const max_sessions = parseInt(formData.get('max_sessions') as string) || -1;
-    const max_scenarios = parseInt(formData.get('max_scenarios') as string) || -1;
     const subscription_raw = (formData.get('subscription_expires_at') as string)?.trim();
     const subscription_expires_at = subscription_raw || null;
+
+    // Limits always derived from plan — single source of truth
+    const limits = getPlanLimits(plan);
 
     const supabase = createServiceClient();
     const { error } = await supabase
@@ -85,9 +86,9 @@ export default async function AdminOrganizationDetailPage({
         contact_email,
         plan,
         ai_generation_enabled,
-        max_formateurs,
-        max_sessions,
-        max_scenarios,
+        max_formateurs: limits.max_formateurs,
+        max_sessions: limits.max_sessions,
+        max_scenarios: limits.max_scenarios,
         subscription_expires_at,
       })
       .eq('id', id);
@@ -174,24 +175,32 @@ export default async function AdminOrganizationDetailPage({
               </div>
             </div>
 
-            {/* Limites */}
-            <div>
-              <p className="text-sm font-medium text-slate-700 mb-3">Limites personnalisées <span className="text-slate-400 font-normal">(-1 = illimité)</span></p>
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <Label htmlFor="max_formateurs">Formateurs max</Label>
-                  <Input id="max_formateurs" name="max_formateurs" type="number" min="-1" defaultValue={org.max_formateurs ?? -1} />
+            {/* Plan limits preview — auto-applied on save */}
+            {(() => {
+              const preview = getPlanConfig(org.plan);
+              const fmt = (v: number) => v === -1 ? '∞' : String(v);
+              return preview ? (
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-xs font-medium text-slate-500 mb-3 uppercase tracking-wide">
+                    Limites appliquées par le plan sélectionné
+                  </p>
+                  <div className="grid grid-cols-4 gap-3 text-sm">
+                    {[
+                      { label: 'Formateurs', value: fmt(preview.maxFormateurs) },
+                      { label: 'Sessions', value: fmt(preview.maxSessions) },
+                      { label: 'Scénarios', value: fmt(preview.maxScenarios) },
+                      { label: 'Joueurs', value: fmt(preview.maxJoueurs) },
+                    ].map((item) => (
+                      <div key={item.label} className="bg-white rounded-md border border-slate-200 p-3 text-center">
+                        <p className="text-lg font-bold text-slate-900">{item.value}</p>
+                        <p className="text-xs text-slate-500">{item.label}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-xs text-slate-400 mt-2">Ces valeurs se mettent à jour automatiquement lors du changement de plan.</p>
                 </div>
-                <div>
-                  <Label htmlFor="max_sessions">Sessions max</Label>
-                  <Input id="max_sessions" name="max_sessions" type="number" min="-1" defaultValue={org.max_sessions ?? -1} />
-                </div>
-                <div>
-                  <Label htmlFor="max_scenarios">Scénarios max</Label>
-                  <Input id="max_scenarios" name="max_scenarios" type="number" min="-1" defaultValue={org.max_scenarios ?? -1} />
-                </div>
-              </div>
-            </div>
+              ) : null;
+            })()}
 
             {/* IA toggle */}
             <div className="flex items-center gap-3">

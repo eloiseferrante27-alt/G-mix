@@ -122,9 +122,9 @@ export default async function OrganismeDashboard() {
             <CardHeader><CardTitle>Limites du plan {plan.name}</CardTitle></CardHeader>
             <CardContent className="space-y-3 text-sm">
               {[
-                { label: 'Formateurs', used: formateurCount ?? 0, max: orgData.max_formateurs },
-                { label: 'Scénarios', used: scenarioCount ?? 0, max: orgData.max_scenarios },
-                { label: 'Sessions', used: sessionCount ?? 0, max: orgData.max_sessions },
+                { label: 'Formateurs', used: formateurCount ?? 0, max: plan?.maxFormateurs ?? -1 },
+                { label: 'Scénarios', used: scenarioCount ?? 0, max: plan?.maxScenarios ?? -1 },
+                { label: 'Sessions', used: sessionCount ?? 0, max: plan?.maxSessions ?? -1 },
               ].map((item) => {
                 const pct = item.max > 0 ? Math.min(100, ((item.used / item.max) * 100)) : 0;
                 const unlimited = item.max < 0;

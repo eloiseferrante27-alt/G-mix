@@ -2,16 +2,19 @@ export type Role = 'admin' | 'organisme' | 'formateur' | 'joueur';
 export type SessionStatus = 'draft' | 'active' | 'completed' | 'archived';
 export type TurnStatus = 'pending' | 'open' | 'closed';
 
+export type PlanKey = 'demo' | 'plan_199' | 'plan_299' | 'plan_499' | 'free' | 'pro' | 'enterprise';
+
 export interface Organization {
   id: string;
   name: string;
-  plan: 'free' | 'pro' | 'enterprise';
-  contact_email?: string;
+  plan: PlanKey;
+  contact_email?: string | null;
   owner_id?: string | null;
-  max_formateurs?: number;
-  max_scenarios?: number;
-  max_sessions?: number;
+  max_formateurs: number;
+  max_scenarios: number;
+  max_sessions: number;
   ai_generation_enabled?: boolean;
+  subscription_expires_at?: string | null;
   created_at: string;
 }
 

@@ -107,3 +107,18 @@ export function getPlanConfig(plan: string): PlanConfig | null {
 export function getPlanName(plan: string): string {
   return plans[plan]?.name ?? 'Démo';
 }
+
+export function getPlanLimits(plan: string): {
+  max_formateurs: number;
+  max_sessions: number;
+  max_scenarios: number;
+  max_joueurs: number;
+} {
+  const cfg = plans[plan] ?? plans['demo'];
+  return {
+    max_formateurs: cfg.maxFormateurs,
+    max_sessions: cfg.maxSessions,
+    max_scenarios: cfg.maxScenarios,
+    max_joueurs: cfg.maxJoueurs,
+  };
+}
