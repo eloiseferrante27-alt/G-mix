@@ -25,7 +25,7 @@ export default async function AdminUsersPage({
 
   let query = supabase
     .from('profiles')
-    .select('*, organizations(name)')
+    .select('*, organizations!profiles_organization_id_fkey(name)')
     .order('created_at', { ascending: false });
 
   if (filterRole && filterRole !== 'all') {
@@ -56,6 +56,7 @@ export default async function AdminUsersPage({
 
   const filterTabs = [
     { key: 'all', label: 'Tous', count: counts['all'] },
+    { key: 'admin', label: 'Admins', count: counts['admin'] },
     { key: 'organisme', label: 'Organismes', count: counts['organisme'] },
     { key: 'formateur', label: 'Formateurs', count: counts['formateur'] },
     { key: 'joueur', label: 'Joueurs', count: counts['joueur'] },

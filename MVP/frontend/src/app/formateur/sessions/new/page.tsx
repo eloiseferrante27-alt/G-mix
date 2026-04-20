@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { getSession } from '@/lib/session';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -32,16 +32,18 @@ export default async function NewSessionPage() {
     const total_turns = parseInt(formData.get('total_turns') as string, 10);
 
     const sess = await getSession();
-    const supabase = await createClient();
+    if (!sess) redirect('/login');
+    // Service client bypasses RLS — user already authenticated via getSession()
+    const supabase = createServiceClient();
 
     const { data, error } = await supabase
       .from('game_sessions')
       .insert({
         name,
         description,
-        scenario_id,
-        formateur_id: sess!.userId,
-        organization_id: sess!.organizationId,
+        scenario_id: scenario_id || null,
+        formateur_id: sess.userId,
+        organization_id: sess.organizationId ?? null,
         status: 'draft',
         current_turn: 0,
         total_turns,
@@ -51,7 +53,7 @@ export default async function NewSessionPage() {
       .single();
 
     if (error || !data) {
-      throw new Error('Impossible de créer la session');
+      throw new Error('Impossible de créer la session : ' + (error?.message ?? 'Erreur inconnue'));
     }
 
     redirect(`/formateur/sessions/${data.id}`);

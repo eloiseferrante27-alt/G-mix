@@ -29,8 +29,9 @@ export default async function JoueurDashboard() {
     .select('team_id, teams(id, name, color, session_id)')
     .eq('user_id', session.userId);
 
+  type TeamInfo = { id: string; name: string; color: string; session_id: string };
   const sessionIds = (teamMemberships ?? [])
-    .map((tm) => (tm.teams as { session_id: string } | null)?.session_id)
+    .map((tm) => (tm.teams as unknown as TeamInfo | null)?.session_id)
     .filter(Boolean) as string[];
 
   const { data: sessions } = sessionIds.length
@@ -72,9 +73,9 @@ export default async function JoueurDashboard() {
       <div className="space-y-4">
         {activeSessions.map((s) => {
           const team = (teamMemberships ?? []).find(
-            (tm) => (tm.teams as { session_id: string } | null)?.session_id === s.id
+            (tm) => (tm.teams as unknown as TeamInfo | null)?.session_id === s.id
           );
-          const teamInfo = team?.teams as { name: string; color: string } | null;
+          const teamInfo = team?.teams as unknown as TeamInfo | null;
           return (
             <Card key={s.id} className="hover:shadow-md transition-shadow">
               <CardHeader className="pb-3">

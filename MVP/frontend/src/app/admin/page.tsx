@@ -9,18 +9,21 @@ export default async function AdminDashboard() {
 
   const [
     { count: orgCount },
-    { count: userCount },
+    { count: formateurCount },
+    { count: joueurCount },
     { count: sessionCount },
   ] = await Promise.all([
     supabase.from('organizations').select('id', { count: 'exact', head: true }),
-    supabase.from('profiles').select('id', { count: 'exact', head: true }).neq('role', 'admin'),
+    supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'formateur'),
+    supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'joueur'),
     supabase.from('game_sessions').select('id', { count: 'exact', head: true }),
   ]);
 
   const stats = [
     { label: 'Organisations', value: orgCount ?? 0, icon: '🏢', href: '/admin/organizations' },
-    { label: 'Utilisateurs', value: userCount ?? 0, icon: '👤', href: '/admin/organizations' },
-    { label: 'Sessions de jeu', value: sessionCount ?? 0, icon: '🎮', href: '/formateur' },
+    { label: 'Formateurs', value: formateurCount ?? 0, icon: '🎓', href: '/admin/users?role=formateur' },
+    { label: 'Joueurs', value: joueurCount ?? 0, icon: '🎮', href: '/admin/users?role=joueur' },
+    { label: 'Sessions', value: sessionCount ?? 0, icon: '📋', href: '/admin/users' },
   ];
 
   return (
@@ -30,7 +33,7 @@ export default async function AdminDashboard() {
         <p className="text-slate-500 mt-1">Bonjour, {session?.firstName} — vue globale de la plateforme</p>
       </div>
 
-      <div className="grid grid-cols-3 gap-6 mb-8">
+      <div className="grid grid-cols-4 gap-6 mb-8">
         {stats.map((s) => (
           <Link key={s.label} href={s.href}>
             <Card className="hover:shadow-md transition-shadow cursor-pointer">
