@@ -25,6 +25,7 @@ CREATE TABLE profiles (
     last_name TEXT NOT NULL DEFAULT '',
     role VARCHAR(20) NOT NULL DEFAULT 'joueur' CHECK (role IN ('admin', 'organisme', 'formateur', 'joueur')),
     organization_id UUID REFERENCES organizations(id) ON DELETE SET NULL,
+    disabled BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -51,7 +52,7 @@ CREATE TABLE game_sessions (
     organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
     name VARCHAR(255) NOT NULL,
     description TEXT DEFAULT '',
-    status VARCHAR(20) NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'active', 'completed', 'archived')),
+    status VARCHAR(20) NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'active', 'paused', 'completed', 'archived')),
     current_turn INTEGER NOT NULL DEFAULT 0 CHECK (current_turn >= 0),
     total_turns INTEGER NOT NULL DEFAULT 6 CHECK (total_turns > 0),
     config JSONB NOT NULL DEFAULT '{}',

@@ -2,46 +2,108 @@ export interface PlanConfig {
   name: string;
   badge: string;
   color: string;
-  maxScenarios: number;
-  maxSessions: number;
+  price: number | null;
+  maxJeux: number;
+  maxJoueurs: number;
   maxFormateurs: number;
+  maxSessions: number;
   aiGeneration: boolean;
+  // legacy aliases used in organisme dashboard
+  maxScenarios: number;
 }
 
 const plans: Record<string, PlanConfig> = {
-  free: {
-    name: 'Gratuit',
-    badge: 'Gratuit',
+  demo: {
+    name: 'Démo',
+    badge: 'Démo',
     color: 'bg-slate-100 text-slate-700',
-    maxScenarios: 3,
-    maxSessions: 5,
+    price: 0,
+    maxJeux: 1,
+    maxJoueurs: 1,
     maxFormateurs: 1,
+    maxSessions: 1,
     aiGeneration: false,
+    maxScenarios: 1,
+  },
+  plan_199: {
+    name: 'Starter',
+    badge: '199 €/mois',
+    color: 'bg-purple-100 text-purple-700',
+    price: 199,
+    maxJeux: 10,
+    maxJoueurs: 200,
+    maxFormateurs: 5,
+    maxSessions: 20,
+    aiGeneration: true,
+    maxScenarios: 10,
+  },
+  plan_299: {
+    name: 'Pro',
+    badge: '299 €/mois',
+    color: 'bg-blue-100 text-blue-700',
+    price: 299,
+    maxJeux: 50,
+    maxJoueurs: 400,
+    maxFormateurs: 15,
+    maxSessions: 100,
+    aiGeneration: true,
+    maxScenarios: 50,
+  },
+  plan_499: {
+    name: 'Enterprise',
+    badge: '499 €/mois',
+    color: 'bg-amber-100 text-amber-700',
+    price: 499,
+    maxJeux: 200,
+    maxJoueurs: 1000,
+    maxFormateurs: -1,
+    maxSessions: -1,
+    aiGeneration: true,
+    maxScenarios: 200,
+  },
+  // legacy keys kept for backwards compat
+  free: {
+    name: 'Démo',
+    badge: 'Démo',
+    color: 'bg-slate-100 text-slate-700',
+    price: 0,
+    maxJeux: 1,
+    maxJoueurs: 1,
+    maxFormateurs: 1,
+    maxSessions: 1,
+    aiGeneration: false,
+    maxScenarios: 1,
   },
   pro: {
     name: 'Pro',
-    badge: 'Pro',
-    color: 'bg-purple-100 text-purple-700',
-    maxScenarios: 20,
-    maxSessions: 50,
-    maxFormateurs: 5,
+    badge: '299 €/mois',
+    color: 'bg-blue-100 text-blue-700',
+    price: 299,
+    maxJeux: 50,
+    maxJoueurs: 400,
+    maxFormateurs: 15,
+    maxSessions: 100,
     aiGeneration: true,
+    maxScenarios: 50,
   },
   enterprise: {
-    name: 'Entreprise',
-    badge: 'Entreprise',
-    color: 'bg-blue-100 text-blue-700',
-    maxScenarios: -1, // unlimited
-    maxSessions: -1,
+    name: 'Enterprise',
+    badge: '499 €/mois',
+    color: 'bg-amber-100 text-amber-700',
+    price: 499,
+    maxJeux: 200,
+    maxJoueurs: 1000,
     maxFormateurs: -1,
+    maxSessions: -1,
     aiGeneration: true,
+    maxScenarios: 200,
   },
 };
 
 export function getPlanConfig(plan: string): PlanConfig | null {
-  return plans[plan] ?? null;
+  return plans[plan] ?? plans['demo'];
 }
 
 export function getPlanName(plan: string): string {
-  return plans[plan]?.name ?? 'Gratuit';
+  return plans[plan]?.name ?? 'Démo';
 }
