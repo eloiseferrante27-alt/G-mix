@@ -200,6 +200,11 @@ export default async function AdminOrganizationDetailPage({
       )}
 
       {/* ── Edit form ─────────────────────────────────────────────────────── */}
+      {/* Reset-limits form lives outside the main form to avoid nested <form> */}
+      <form id="reset-limits-form" action={handleResetLimits} className="hidden">
+        <input type="hidden" name="plan" value={org.plan} />
+      </form>
+
       <Card className="mb-8">
         <CardHeader><CardTitle>Modifier l&apos;organisation</CardTitle></CardHeader>
         <CardContent>
@@ -253,14 +258,11 @@ export default async function AdminOrganizationDetailPage({
                   <p className="text-sm font-medium text-slate-700">Limites personnalisées</p>
                   <p className="text-xs text-slate-400">Les valeurs doivent être ≥ aux limites du plan. −1 = illimité.</p>
                 </div>
-                {/* Reset button */}
-                <form action={handleResetLimits}>
-                  <input type="hidden" name="plan" value={org.plan} />
-                  <button type="submit"
-                    className="text-xs text-purple-700 border border-purple-200 px-3 py-1.5 rounded-lg hover:bg-purple-50 transition-colors">
-                    Réinitialiser aux valeurs du plan
-                  </button>
-                </form>
+                {/* Reset button — submits the external reset-limits-form (no nesting) */}
+                <button type="submit" form="reset-limits-form"
+                  className="text-xs text-purple-700 border border-purple-200 px-3 py-1.5 rounded-lg hover:bg-purple-50 transition-colors">
+                  Réinitialiser aux valeurs du plan
+                </button>
               </div>
               <div className="grid grid-cols-3 gap-4">
                 {[
