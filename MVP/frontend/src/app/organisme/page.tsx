@@ -54,9 +54,12 @@ export default async function OrganismeDashboard() {
   return (
     <div className="p-8">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-slate-900">
-          {orgData?.name ?? 'Mon organisation'}
-        </h1>
+        <a href="/organisme/settings" className="hover:underline">
+          <h1 className="text-2xl font-bold text-slate-900 inline">
+            {orgData?.name ?? 'Mon organisation'}
+          </h1>
+        </a>
+        <span className="ml-2 text-xs text-purple-600 hover:underline"><a href="/organisme/settings">✎ Modifier</a></span>
         <div className="flex items-center gap-3 mt-2">
           {plan && (
             <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${plan.color}`}>
