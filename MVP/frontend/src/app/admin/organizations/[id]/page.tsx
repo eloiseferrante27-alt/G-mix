@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { getPlanConfig, getPlanLimits, getPlanTier, isLimitValid } from '@/lib/plans';
+import { getPlanConfig, getPlanLimits } from '@/lib/plans';
 
 const roleVariant: Record<string, 'default' | 'info' | 'warning' | 'success'> = {
   admin: 'default', organisme: 'info', formateur: 'warning', joueur: 'success',
@@ -17,10 +17,10 @@ const roleLabel: Record<string, string> = {
 };
 
 const PLANS = [
-  { key: 'demo',     label: 'Démo',        price: 'Gratuit',    tier: 0 },
-  { key: 'plan_199', label: 'Starter',      price: '199 €/mois', tier: 1 },
-  { key: 'plan_299', label: 'Pro',          price: '299 €/mois', tier: 2 },
-  { key: 'plan_499', label: 'Enterprise',   price: '499 €/mois', tier: 3 },
+  { key: 'demo',     label: 'Démo',      price: 'Gratuit'    },
+  { key: 'plan_199', label: 'Starter',    price: '199 €/mois' },
+  { key: 'plan_299', label: 'Pro',        price: '299 €/mois' },
+  { key: 'plan_499', label: 'Enterprise', price: '499 €/mois' },
 ];
 
 function fmt(v: number) { return v === -1 ? '∞' : String(v); }
@@ -39,7 +39,7 @@ export default async function AdminOrganizationDetailPage({
   const { success, error } = await searchParams;
   const supabase = createServiceClient();
 
-  const [{ data: org }, { data: members }, { data: sessions }] =
+  const [{ data: org }, { data: members }, { data: sessions }, { data: subHistory }] =
     await Promise.all([
       supabase.from('organizations').select('*').eq('id', id).single(),
       supabase
@@ -53,17 +53,22 @@ export default async function AdminOrganizationDetailPage({
         .select('id, name, status, current_turn, total_turns, created_at')
         .eq('organization_id', id)
         .order('created_at', { ascending: false }),
+      supabase
+        .from('subscription_history')
+        .select('id, plan, subscription_expires_at, changed_at, notes')
+        .eq('organization_id', id)
+        .order('changed_at', { ascending: false })
+        .limit(20),
     ]);
 
   if (!org) redirect('/admin/organizations');
 
-  // ── Subscription state ────────────────────────────────────────────────────
   const now = new Date();
   const expiresAt = org.subscription_expires_at ? new Date(org.subscription_expires_at) : null;
-  const isPlanActive = !expiresAt || expiresAt > now;      // no date = indefinite
+  const isPlanActive = !expiresAt || expiresAt > now;
   const isPlanExpired = expiresAt !== null && expiresAt <= now;
-  const currentTier = getPlanTier(org.plan);
   const currentPlanCfg = getPlanConfig(org.plan);
+  const planLimits = getPlanLimits(org.plan);
 
   // ── Server actions ────────────────────────────────────────────────────────
   async function handleUpdateOrg(formData: FormData) {
@@ -79,47 +84,20 @@ export default async function AdminOrganizationDetailPage({
     const ai_generation_enabled = formData.get('ai_generation_enabled') === 'on';
     const subscription_raw = (formData.get('subscription_expires_at') as string)?.trim();
     const subscription_expires_at = subscription_raw || null;
-    const forceDowngrade = formData.get('force_downgrade') === 'on';
-
-    const supabase = createServiceClient();
-    const { data: currentOrg } = await supabase
-      .from('organizations').select('plan, subscription_expires_at, max_formateurs, max_sessions, max_scenarios').eq('id', id).single();
-
-    // ── Downgrade guard ───────────────────────────────────────────────────
-    const currentExp = currentOrg?.subscription_expires_at ? new Date(currentOrg.subscription_expires_at) : null;
-    const currentActive = !currentExp || currentExp > new Date();
-    const newTier = getPlanTier(newPlan);
-    const oldTier = getPlanTier(currentOrg?.plan ?? 'demo');
-
-    if (newTier < oldTier && currentActive && !forceDowngrade) {
-      redirect(`/admin/organizations/${id}?error=${encodeURIComponent(
-        `L'abonnement "${getPlanConfig(currentOrg?.plan ?? 'demo')?.name}" est encore actif` +
-        (currentExp ? ` jusqu'au ${currentExp.toLocaleDateString('fr-FR')}` : '') +
-        '. Cochez "Forcer la modification" pour rétrograder quand même.'
-      )}`);
-    }
-
-    // ── Limit validation ──────────────────────────────────────────────────
-    const newPlanLimits = getPlanLimits(newPlan);
     const max_formateurs = parseInt(formData.get('max_formateurs') as string, 10);
     const max_sessions   = parseInt(formData.get('max_sessions')   as string, 10);
     const max_scenarios  = parseInt(formData.get('max_scenarios')  as string, 10);
+    const notes = (formData.get('notes') as string)?.trim() || null;
 
-    const limitErrors: string[] = [];
-    if (!isLimitValid(max_formateurs, newPlanLimits.max_formateurs))
-      limitErrors.push(`Formateurs min. ${fmt(newPlanLimits.max_formateurs)}`);
-    if (!isLimitValid(max_sessions, newPlanLimits.max_sessions))
-      limitErrors.push(`Sessions min. ${fmt(newPlanLimits.max_sessions)}`);
-    if (!isLimitValid(max_scenarios, newPlanLimits.max_scenarios))
-      limitErrors.push(`Scénarios min. ${fmt(newPlanLimits.max_scenarios)}`);
+    const supabase = createServiceClient();
 
-    if (limitErrors.length > 0) {
-      redirect(`/admin/organizations/${id}?error=${encodeURIComponent(
-        'Limites inférieures au plan : ' + limitErrors.join(', ')
-      )}`);
-    }
+    // Fetch current org to detect plan changes
+    const { data: currentOrg } = await supabase
+      .from('organizations').select('plan, subscription_expires_at').eq('id', id).single();
 
-    // ── Save ──────────────────────────────────────────────────────────────
+    const planChanged = currentOrg?.plan !== newPlan ||
+      (currentOrg?.subscription_expires_at ?? null) !== subscription_expires_at;
+
     const { error } = await supabase.from('organizations').update({
       name, contact_email, plan: newPlan, ai_generation_enabled,
       max_formateurs, max_sessions, max_scenarios,
@@ -127,6 +105,18 @@ export default async function AdminOrganizationDetailPage({
     }).eq('id', id);
 
     if (error) redirect(`/admin/organizations/${id}?error=${encodeURIComponent('Erreur : ' + error.message)}`);
+
+    // Log plan/expiry change to history
+    if (planChanged) {
+      await supabase.from('subscription_history').insert({
+        organization_id: id,
+        plan: newPlan,
+        subscription_expires_at,
+        changed_by: sess.userId,
+        notes,
+      });
+    }
+
     redirect(`/admin/organizations/${id}?success=${encodeURIComponent('Modifications enregistrées')}`);
   }
 
@@ -156,7 +146,6 @@ export default async function AdminOrganizationDetailPage({
   }
 
   const expiresAtValue = expiresAt ? expiresAt.toISOString().split('T')[0] : '';
-  const planLimits = getPlanLimits(org.plan);
 
   return (
     <div className="p-8">
@@ -164,9 +153,8 @@ export default async function AdminOrganizationDetailPage({
         <Link href="/admin/organizations" className="text-sm text-purple-700 hover:underline mb-2 block">
           ← Retour aux organisations
         </Link>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <h1 className="text-2xl font-bold text-slate-900">{org.name}</h1>
-          {/* Active plan badge */}
           {currentPlanCfg && (
             <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${currentPlanCfg.color}`}>
               {currentPlanCfg.name}
@@ -179,7 +167,7 @@ export default async function AdminOrganizationDetailPage({
           )}
           {isPlanExpired && (
             <span className="text-xs text-red-500 font-medium">
-              ✕ Expiré le {expiresAt!.toLocaleDateString('fr-FR')} — retour Démo
+              ✕ Expiré le {expiresAt!.toLocaleDateString('fr-FR')}
             </span>
           )}
         </div>
@@ -199,12 +187,12 @@ export default async function AdminOrganizationDetailPage({
         </div>
       )}
 
-      {/* ── Edit form ─────────────────────────────────────────────────────── */}
-      {/* Reset-limits form lives outside the main form to avoid nested <form> */}
+      {/* Reset form — outside main form to avoid nesting */}
       <form id="reset-limits-form" action={handleResetLimits} className="hidden">
         <input type="hidden" name="plan" value={org.plan} />
       </form>
 
+      {/* ── Edit form ─────────────────────────────────────────────────────── */}
       <Card className="mb-8">
         <CardHeader><CardTitle>Modifier l&apos;organisation</CardTitle></CardHeader>
         <CardContent>
@@ -223,42 +211,53 @@ export default async function AdminOrganizationDetailPage({
               </div>
             </div>
 
-            {/* Plan + expiry */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="plan">Plan d&apos;abonnement</Label>
-                <select id="plan" name="plan" defaultValue={org.plan}
-                  className="mt-1 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-purple-500">
-                  {PLANS.map((p) => (
-                    <option key={p.key} value={p.key}
-                      disabled={p.tier < currentTier && isPlanActive}>
-                      {p.label} — {p.price}
-                      {p.tier < currentTier && isPlanActive ? ' (abonnement actif supérieur)' : ''}
-                    </option>
-                  ))}
-                </select>
-                {isPlanActive && expiresAt && (
-                  <p className="text-xs text-amber-600 mt-1">
-                    Abonnement actif jusqu&apos;au {expiresAt.toLocaleDateString('fr-FR')} — la rétrogradation est bloquée sauf override.
-                  </p>
-                )}
+            {/* Abonnement */}
+            <div className="rounded-lg border border-slate-200 p-4 space-y-4">
+              <p className="text-sm font-medium text-slate-700">Abonnement</p>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="plan">Plan</Label>
+                  <select id="plan" name="plan" defaultValue={org.plan}
+                    className="mt-1 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-purple-500">
+                    {PLANS.map((p) => (
+                      <option key={p.key} value={p.key}>{p.label} — {p.price}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <Label htmlFor="subscription_expires_at">Date d&apos;expiration</Label>
+                  <Input id="subscription_expires_at" name="subscription_expires_at" type="date"
+                    defaultValue={expiresAtValue} />
+                  <p className="text-xs text-slate-400 mt-1">Laisser vide = abonnement permanent</p>
+                </div>
               </div>
               <div>
-                <Label htmlFor="subscription_expires_at">Date d&apos;expiration</Label>
-                <Input id="subscription_expires_at" name="subscription_expires_at" type="date"
-                  defaultValue={expiresAtValue} />
-                <p className="text-xs text-slate-400 mt-1">Laisser vide = abonnement permanent</p>
+                <Label htmlFor="notes">Note (optionnel — apparaît dans l&apos;historique)</Label>
+                <Input id="notes" name="notes" placeholder="Ex: upgrade payé le …, code promo …" />
+              </div>
+              {/* Plan limits preview (read-only, from plan config) */}
+              <div className="grid grid-cols-4 gap-2 pt-1">
+                {[
+                  { label: 'Formateurs', value: fmt(planLimits.max_formateurs) },
+                  { label: 'Sessions',   value: fmt(planLimits.max_sessions)   },
+                  { label: 'Scénarios',  value: fmt(planLimits.max_scenarios)  },
+                  { label: 'Joueurs',    value: fmt(planLimits.max_joueurs)    },
+                ].map((item) => (
+                  <div key={item.label} className="bg-slate-50 rounded border border-slate-100 p-2 text-center">
+                    <p className="text-base font-bold text-slate-900">{item.value}</p>
+                    <p className="text-xs text-slate-400">{item.label} (plan)</p>
+                  </div>
+                ))}
               </div>
             </div>
 
-            {/* Custom limits */}
+            {/* Limites personnalisées */}
             <div>
               <div className="flex items-center justify-between mb-3">
                 <div>
                   <p className="text-sm font-medium text-slate-700">Limites personnalisées</p>
-                  <p className="text-xs text-slate-400">Les valeurs doivent être ≥ aux limites du plan. −1 = illimité.</p>
+                  <p className="text-xs text-slate-400">Indépendantes du plan. −1 = illimité.</p>
                 </div>
-                {/* Reset button — submits the external reset-limits-form (no nesting) */}
                 <button type="submit" form="reset-limits-form"
                   className="text-xs text-purple-700 border border-purple-200 px-3 py-1.5 rounded-lg hover:bg-purple-50 transition-colors">
                   Réinitialiser aux valeurs du plan
@@ -272,22 +271,11 @@ export default async function AdminOrganizationDetailPage({
                 ].map((field) => (
                   <div key={field.id}>
                     <Label htmlFor={field.id}>{field.label}</Label>
-                    <Input
-                      id={field.id} name={field.id} type="number"
-                      min={field.planDefault === -1 ? -1 : field.planDefault}
-                      defaultValue={field.current ?? field.planDefault}
-                    />
-                    <p className="text-xs text-slate-400 mt-1">
-                      Plan: {fmt(field.planDefault)} · Actuel: {fmt(field.current ?? field.planDefault)}
-                    </p>
+                    <Input id={field.id} name={field.id} type="number" min="-1"
+                      defaultValue={field.current ?? field.planDefault} />
+                    <p className="text-xs text-slate-400 mt-1">Valeur plan : {fmt(field.planDefault)}</p>
                   </div>
                 ))}
-              </div>
-              {/* Joueurs max: always from plan, not stored in DB */}
-              <div className="mt-3 p-3 bg-slate-50 rounded-lg text-sm text-slate-600 flex items-center gap-2">
-                <span className="font-medium">Joueurs max :</span>
-                <span className="font-bold text-slate-900">{fmt(planLimits.max_joueurs)}</span>
-                <span className="text-xs text-slate-400">(défini par le plan, non modifiable séparément)</span>
               </div>
             </div>
 
@@ -301,28 +289,16 @@ export default async function AdminOrganizationDetailPage({
               </Label>
             </div>
 
-            {/* Force downgrade override */}
-            {isPlanActive && expiresAt && (
-              <div className="flex items-center gap-3 p-3 bg-red-50 border border-red-200 rounded-lg">
-                <input id="force_downgrade" name="force_downgrade" type="checkbox"
-                  className="w-4 h-4 text-red-600 rounded border-red-300" />
-                <Label htmlFor="force_downgrade" className="cursor-pointer text-red-700 text-sm">
-                  Forcer la modification même si l&apos;abonnement actuel est encore actif (admin seulement)
-                </Label>
-              </div>
-            )}
-
             <Button type="submit">Enregistrer les modifications</Button>
           </form>
         </CardContent>
       </Card>
 
       {/* ── Stats ─────────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-3 gap-4 mb-8">
+      <div className="grid grid-cols-2 gap-4 mb-8">
         {[
           { label: 'Membres', value: members?.length ?? 0, icon: '👥' },
           { label: 'Sessions', value: sessions?.length ?? 0, icon: '🎮' },
-          { label: 'Scénarios (via DB)', value: '—', icon: '📝' },
         ].map((s) => (
           <Card key={s.label}>
             <CardContent className="flex items-center gap-4 py-5">
@@ -335,6 +311,55 @@ export default async function AdminOrganizationDetailPage({
           </Card>
         ))}
       </div>
+
+      {/* ── Subscription history ──────────────────────────────────────────── */}
+      <Card className="mb-6">
+        <CardHeader><CardTitle>Historique des abonnements</CardTitle></CardHeader>
+        <CardContent className="p-0">
+          {subHistory && subHistory.length > 0 ? (
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 border-b border-slate-100">
+                <tr>
+                  <th className="text-left px-6 py-3 text-slate-500 font-medium">Date</th>
+                  <th className="text-left px-6 py-3 text-slate-500 font-medium">Plan</th>
+                  <th className="text-left px-6 py-3 text-slate-500 font-medium">Expiration</th>
+                  <th className="text-left px-6 py-3 text-slate-500 font-medium">Note</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {subHistory.map((h) => {
+                  const cfg = getPlanConfig(h.plan);
+                  const hExpires = h.subscription_expires_at ? new Date(h.subscription_expires_at) : null;
+                  return (
+                    <tr key={h.id} className="hover:bg-slate-50">
+                      <td className="px-6 py-3 text-slate-500 text-xs">
+                        {new Date(h.changed_at).toLocaleString('fr-FR')}
+                      </td>
+                      <td className="px-6 py-3">
+                        {cfg ? (
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${cfg.color}`}>
+                            {cfg.name}
+                          </span>
+                        ) : h.plan}
+                      </td>
+                      <td className="px-6 py-3 text-slate-600 text-xs">
+                        {hExpires ? hExpires.toLocaleDateString('fr-FR') : 'Permanent'}
+                      </td>
+                      <td className="px-6 py-3 text-slate-500 text-xs italic">
+                        {h.notes ?? '—'}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          ) : (
+            <p className="px-6 py-8 text-center text-slate-400 text-sm">
+              Aucun changement d&apos;abonnement enregistré
+            </p>
+          )}
+        </CardContent>
+      </Card>
 
       {/* ── Members ───────────────────────────────────────────────────────── */}
       <Card className="mb-6">
