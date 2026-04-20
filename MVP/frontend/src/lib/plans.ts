@@ -122,3 +122,23 @@ export function getPlanLimits(plan: string): {
     max_joueurs: cfg.maxJoueurs,
   };
 }
+
+// Tier order: higher = more features. Used to enforce upgrade-only rules.
+export const PLAN_TIER: Record<string, number> = {
+  demo: 0, free: 0,
+  plan_199: 1,
+  plan_299: 2, pro: 2,
+  plan_499: 3, enterprise: 3,
+};
+
+export function getPlanTier(plan: string): number {
+  return PLAN_TIER[plan] ?? 0;
+}
+
+// Returns true if the custom limit is valid (>= plan default, or -1 = unlimited which is always valid).
+// If planDefault is -1 (unlimited), only -1 is valid for custom.
+export function isLimitValid(custom: number, planDefault: number): boolean {
+  if (custom === -1) return true;
+  if (planDefault === -1) return false; // can't restrict an unlimited-plan limit
+  return custom >= planDefault;
+}
