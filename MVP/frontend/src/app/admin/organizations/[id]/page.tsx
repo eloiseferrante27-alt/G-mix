@@ -72,7 +72,7 @@ export default async function AdminOrganizationDetailPage({
     if (!sess || sess.role !== 'admin') redirect('/login');
 
     const name = (formData.get('name') as string)?.trim();
-    if (!name) redirect(`/admin/organizations/${id}?error=Le+nom+est+obligatoire`);
+    if (!name) redirect(`/admin/organizations/${id}?error=${encodeURIComponent('Le nom est obligatoire')}`);
 
     const contact_email = (formData.get('contact_email') as string)?.trim() || null;
     const newPlan = formData.get('plan') as string;
@@ -127,7 +127,7 @@ export default async function AdminOrganizationDetailPage({
     }).eq('id', id);
 
     if (error) redirect(`/admin/organizations/${id}?error=${encodeURIComponent('Erreur : ' + error.message)}`);
-    redirect(`/admin/organizations/${id}?success=Modifications+enregistrées`);
+    redirect(`/admin/organizations/${id}?success=${encodeURIComponent('Modifications enregistrées')}`);
   }
 
   async function handleResetLimits(formData: FormData) {
@@ -142,7 +142,7 @@ export default async function AdminOrganizationDetailPage({
       max_sessions:   limits.max_sessions,
       max_scenarios:  limits.max_scenarios,
     }).eq('id', id);
-    redirect(`/admin/organizations/${id}?success=Limites+réinitialisées+aux+valeurs+du+plan`);
+    redirect(`/admin/organizations/${id}?success=${encodeURIComponent('Limites réinitialisées aux valeurs du plan')}`);
   }
 
   async function handleRemoveMember(formData: FormData) {

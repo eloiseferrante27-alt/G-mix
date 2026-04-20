@@ -20,7 +20,7 @@ export default async function RejoindreSessionPage({
   async function handleJoin(formData: FormData) {
     'use server';
     const token = (formData.get('token') as string)?.trim();
-    if (!token) redirect('/jeu/rejoindre?error=Code+manquant');
+    if (!token) redirect(`/jeu/rejoindre?error=${encodeURIComponent('Code manquant')}`);
 
     const sess = await getSession();
     if (!sess) redirect('/login');
@@ -35,21 +35,21 @@ export default async function RejoindreSessionPage({
       .is('accepted_at', null)
       .maybeSingle();
 
-    if (!invite) redirect('/jeu/rejoindre?error=Code+invalide+ou+expiré');
+    if (!invite) redirect(`/jeu/rejoindre?error=${encodeURIComponent('Code invalide ou expiré')}`);
 
     // Check not expired
     if (invite.expires_at && new Date(invite.expires_at) < new Date()) {
-      redirect('/jeu/rejoindre?error=Ce+code+a+expiré');
+      redirect(`/jeu/rejoindre?error=${encodeURIComponent('Ce code a expiré')}`);
     }
 
     // Check email match if specified
     if (invite.email && invite.email.toLowerCase() !== sess.email?.toLowerCase()) {
-      redirect('/jeu/rejoindre?error=Ce+code+est+réservé+à+une+autre+adresse+email');
+      redirect(`/jeu/rejoindre?error=${encodeURIComponent('Ce code est réservé à une autre adresse email')}`);
     }
 
     // Check role
     if (invite.role !== 'joueur') {
-      redirect('/jeu/rejoindre?error=Ce+code+est+réservé+aux+formateurs');
+      redirect(`/jeu/rejoindre?error=${encodeURIComponent('Ce code est réservé aux formateurs')}`);
     }
 
     // Attach user to organization
@@ -64,7 +64,7 @@ export default async function RejoindreSessionPage({
       .update({ accepted_at: new Date().toISOString() })
       .eq('id', invite.id);
 
-    redirect('/jeu?success=Organisation+rejointe+avec+succès');
+    redirect(`/jeu?success=${encodeURIComponent('Organisation rejointe avec succès')}`);
   }
 
   return (

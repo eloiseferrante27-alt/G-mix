@@ -68,7 +68,7 @@ export default async function ScenarioDetailPage({
     'use server';
     const prompt = (formData.get('prompt') as string)?.trim();
     if (!prompt) {
-      redirect(`/formateur/scenarios/${scenarioId}?error=Le+prompt+ne+peut+pas+être+vide`);
+      redirect(`/formateur/scenarios/${scenarioId}?error=${encodeURIComponent('Le prompt ne peut pas être vide')}`);
     }
 
     const sess = await getSession();
@@ -76,7 +76,7 @@ export default async function ScenarioDetailPage({
 
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
-      redirect(`/formateur/scenarios/${scenarioId}?error=Clé+Anthropic+manquante+dans+.env.local+(ANTHROPIC_API_KEY)`);
+      redirect(`/formateur/scenarios/${scenarioId}?error=${encodeURIComponent('Clé Anthropic manquante dans .env.local (ANTHROPIC_API_KEY)')}`);
     }
 
     // ── Call AI — errors captured into variable, NOT in catch with redirect ──
@@ -193,7 +193,7 @@ Contraintes:
       );
     }
 
-    redirect(`/formateur/scenarios/${scenarioId}?success=Scénario+généré+avec+succès`);
+    redirect(`/formateur/scenarios/${scenarioId}?success=${encodeURIComponent('Scénario généré avec succès')}`);
   }
 
   // ── Render ───────────────────────────────────────────────────────────────────

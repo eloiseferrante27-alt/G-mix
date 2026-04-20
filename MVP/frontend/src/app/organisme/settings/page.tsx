@@ -52,7 +52,7 @@ export default async function OrganismeSettingsPage({
     if (!sess?.organizationId) redirect('/login');
 
     const name = (formData.get('name') as string)?.trim();
-    if (!name) redirect('/organisme/settings?error=Le+nom+est+obligatoire');
+    if (!name) redirect(`/organisme/settings?error=${encodeURIComponent('Le nom est obligatoire')}`);
 
     const contact_email = (formData.get('contact_email') as string)?.trim() || null;
 
@@ -62,8 +62,8 @@ export default async function OrganismeSettingsPage({
       .update({ name, contact_email })
       .eq('id', sess.organizationId);
 
-    if (error) redirect('/organisme/settings?error=Erreur+lors+de+la+mise+à+jour');
-    redirect('/organisme/settings?success=Modifications+enregistrées');
+    if (error) redirect(`/organisme/settings?error=${encodeURIComponent('Erreur lors de la mise à jour')}`);
+    redirect(`/organisme/settings?success=${encodeURIComponent('Modifications enregistrées')}`);
   }
 
   return (
