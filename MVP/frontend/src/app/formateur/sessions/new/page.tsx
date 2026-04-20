@@ -16,13 +16,27 @@ export default async function NewSessionPage() {
     redirect('/login');
   }
 
-  const supabase = await createClient();
+  const supabase = createServiceClient();
 
-  const { data: scenarios } = await supabase
-    .from('scenarios')
-    .select('id, name')
-    .eq('organization_id', session.organizationId)
-    .order('created_at', { ascending: false });
+  const [{ data: orgScenarios }, { data: templateScenarios }] = await Promise.all([
+    supabase
+      .from('scenarios')
+      .select('id, name')
+      .eq('organization_id', session.organizationId)
+      .order('name'),
+    supabase
+      .from('scenarios')
+      .select('id, name')
+      .eq('is_template', true)
+      .is('organization_id', null)
+      .order('name'),
+  ]);
+
+  // Merge: templates first, then org scenarios
+  const scenarios = [
+    ...(templateScenarios ?? []).map((s) => ({ ...s, _isTemplate: true })),
+    ...(orgScenarios ?? []).map((s) => ({ ...s, _isTemplate: false })),
+  ];
 
   async function handleSubmit(formData: FormData) {
     'use server';
@@ -113,7 +127,7 @@ export default async function NewSessionPage() {
                     <SelectItem value="">Choisissez un scénario</SelectItem>
                     {scenarios.map((sc) => (
                       <SelectItem key={sc.id} value={sc.id}>
-                        {sc.name}
+                        {sc._isTemplate ? `⭐ ${sc.name} (base)` : sc.name}
                       </SelectItem>
                     ))}
                   </Select>
